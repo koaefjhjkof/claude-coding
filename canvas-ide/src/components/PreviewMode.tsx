@@ -395,7 +395,7 @@ function PreviewElement({
   }
 
   // All elements with flows are interactive; some types are always interactive
-  const NATIVE_INTERACTIVE = new Set(['button', 'toggle', 'checkbox', 'slider', 'tabbar', 'rating'])
+  const NATIVE_INTERACTIVE = new Set(['button', 'toggle', 'checkbox', 'slider', 'tabbar', 'rating', 'stepper', 'dropdown'])
   const isInteractive = element.flows.length > 0 || NATIVE_INTERACTIVE.has(element.type)
 
   return (

@@ -2,9 +2,10 @@ import { useState, useRef } from 'react'
 import { useStore } from '../store/useStore'
 import { useUITheme } from '../hooks/useUITheme'
 import { exportHtml } from '../utils/exportHtml'
+import { exportReactNative } from '../utils/exportRN'
 import { SettingsModal } from './SettingsModal'
 import { getApiKey } from '../utils/aiInterpretAction'
-import type { DeviceType } from '../types'
+import type { DeviceType, Screen, AppStyles } from '../types'
 
 const DEVICES: { id: DeviceType; icon: string; title: string }[] = [
   { id: 'phone', icon: '📱', title: 'Phone' },
@@ -25,6 +26,59 @@ const COLOR_PALETTES = [
   { primary: '#ef4444', accent: '#f97316', label: 'Ruby' },
   { primary: '#1f2937', accent: '#6366f1', label: 'Ink' },
 ]
+
+function ExportMenu({ screens, styles, t }: { screens: Screen[]; styles: AppStyles; t: ReturnType<typeof useUITheme> }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        onClick={() => setOpen(!open)}
+        style={{
+          padding: '6px 12px', borderRadius: 8,
+          border: `1px solid ${t.borderStrong}`,
+          background: open ? 'rgba(99,102,241,0.1)' : 'transparent',
+          color: t.textSecondary, fontSize: 12,
+          cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+          display: 'flex', alignItems: 'center', gap: 4,
+        }}
+      >
+        Export <span style={{ fontSize: 9, opacity: 0.7 }}>▾</span>
+      </button>
+      {open && (
+        <>
+          {/* backdrop */}
+          <div style={{ position: 'fixed', inset: 0, zIndex: 98 }} onClick={() => setOpen(false)} />
+          <div style={{
+            position: 'absolute', top: '100%', right: 0, marginTop: 6,
+            background: t.bgPanel, border: `1px solid ${t.border}`,
+            borderRadius: 10, boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+            zIndex: 99, padding: 6, minWidth: 160,
+          }}>
+            {[
+              { label: '🌐 HTML / Web', action: () => { exportHtml(screens, styles); setOpen(false) } },
+              { label: '📱 React Native', action: () => { exportReactNative(screens, styles); setOpen(false) } },
+            ].map((item) => (
+              <button
+                key={item.label}
+                onClick={item.action}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left',
+                  padding: '8px 12px', borderRadius: 7, border: 'none',
+                  background: 'transparent', color: t.textPrimary,
+                  fontSize: 12, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(99,102,241,0.1)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
 
 export function Toolbar() {
   const { device, setDevice, styles, updateStyles, undo, redo, past, future, previewMode, setPreviewMode,
@@ -294,18 +348,10 @@ export function Toolbar() {
         ✦
       </button>
 
-      {/* Export */}
-      <button
-        onClick={() => exportHtml(screens, styles)}
-        style={{
-          padding: '6px 14px', borderRadius: 8,
-          border: `1px solid ${t.borderStrong}`,
-          background: 'transparent', color: t.textSecondary,
-          fontSize: 12, cursor: 'pointer', fontFamily: 'Inter, sans-serif', flexShrink: 0,
-        }}
-      >
-        Export
-      </button>
+      {/* Export dropdown */}
+      <div style={{ position: 'relative', flexShrink: 0 }}>
+        <ExportMenu screens={screens} styles={styles} t={t} />
+      </div>
 
       {/* Publish */}
       <button

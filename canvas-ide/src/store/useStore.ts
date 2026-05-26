@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
-import type { CanvasElement, Screen, DeviceType, AppStyles, ElementType, Flow, ElementProps, AlignType } from '../types'
+import type { CanvasElement, Screen, DeviceType, AppStyles, ElementType, Flow, ElementProps, AlignType, AppVariable } from '../types'
 import { DEVICE_SIZES } from '../data/devices'
 
 interface HistorySnapshot {
@@ -15,6 +15,7 @@ interface CanvasStore {
 
   // Selection & UI
   selectedId: string | null
+  selectedIds: string[]        // multi-select set
   device: DeviceType
   styles: AppStyles
   uiTheme: 'dark' | 'light'
@@ -24,6 +25,10 @@ interface CanvasStore {
   previewMode: boolean
   previewScreenId: string
   snapToGrid: boolean
+  zoom: number
+
+  // Variables
+  variables: AppVariable[]
 
   // Clipboard
   clipboard: CanvasElement | null
@@ -47,17 +52,19 @@ interface CanvasStore {
   updateElement: (id: string, updates: Partial<CanvasElement>) => void
   updateElementProps: (id: string, props: Partial<ElementProps>) => void
   removeElement: (id: string) => void
+  removeSelectedElements: () => void
   duplicateElement: (id: string) => void
   copyElement: (id: string) => void
   pasteElement: () => void
   alignElement: (id: string, align: AlignType) => void
-  selectElement: (id: string | null) => void
+  selectElement: (id: string | null, multi?: boolean) => void
   toggleElementLocked: (id: string) => void
   toggleElementHidden: (id: string) => void
   moveElementUp: (id: string) => void
   moveElementDown: (id: string) => void
   setScreenBackground: (color: string) => void
   toggleSnapToGrid: () => void
+  setZoom: (zoom: number) => void
   importProject: (data: { screens: Screen[]; styles: AppStyles; device: DeviceType; uiTheme: 'dark' | 'light' }) => void
 
   // Global style, device & misc
@@ -84,6 +91,11 @@ interface CanvasStore {
   openGameMode: () => void
   closeGameMode: () => void
 
+  // Variables
+  addVariable: (v: Omit<AppVariable, 'id'>) => void
+  removeVariable: (id: string) => void
+  updateVariable: (id: string, updates: Partial<AppVariable>) => void
+
   // History
   undo: () => void
   redo: () => void
@@ -107,6 +119,7 @@ export const useStore = create<CanvasStore>((set, get) => ({
   screens: [{ id: DEFAULT_SCREEN_ID, name: 'Screen 1', elements: [] }],
   activeScreenId: DEFAULT_SCREEN_ID,
   selectedId: null,
+  selectedIds: [],
   device: 'phone',
   uiTheme: 'dark',
   flowModalElementId: null,
@@ -115,11 +128,13 @@ export const useStore = create<CanvasStore>((set, get) => ({
   previewMode: false,
   previewScreenId: DEFAULT_SCREEN_ID,
   snapToGrid: false,
+  zoom: 1,
   gameModeOpen: false,
   clipboard: null,
   past: [],
   future: [],
   styles: INITIAL_STYLES,
+  variables: [],
 
   _snapshot: () => ({
     screens: JSON.parse(JSON.stringify(get().screens)),
@@ -164,7 +179,7 @@ export const useStore = create<CanvasStore>((set, get) => ({
     }))
   },
 
-  switchScreen: (id) => set({ activeScreenId: id, selectedId: null }),
+  switchScreen: (id) => set({ activeScreenId: id, selectedId: null, selectedIds: [] }),
 
   // --- Elements ---
   addElement: (type, x, y, width, height, props) => {
@@ -211,6 +226,22 @@ export const useStore = create<CanvasStore>((set, get) => ({
           : sc
       ),
       selectedId: s.selectedId === id ? null : s.selectedId,
+      selectedIds: s.selectedIds.filter((x) => x !== id),
+    }))
+  },
+
+  removeSelectedElements: () => {
+    const { selectedIds } = get()
+    if (selectedIds.length === 0) return
+    get()._pushHistory()
+    set((s) => ({
+      screens: s.screens.map((sc) =>
+        sc.id === s.activeScreenId
+          ? { ...sc, elements: sc.elements.filter((el) => !selectedIds.includes(el.id)) }
+          : sc
+      ),
+      selectedId: null,
+      selectedIds: [],
     }))
   },
 
@@ -286,7 +317,23 @@ export const useStore = create<CanvasStore>((set, get) => ({
     })
   },
 
-  selectElement: (id) => set({ selectedId: id }),
+  selectElement: (id, multi = false) => {
+    if (id === null) {
+      set({ selectedId: null, selectedIds: [] })
+      return
+    }
+    if (multi) {
+      set((s) => {
+        const already = s.selectedIds.includes(id)
+        const next = already
+          ? s.selectedIds.filter((x) => x !== id)
+          : [...s.selectedIds, id]
+        return { selectedId: id, selectedIds: next }
+      })
+    } else {
+      set({ selectedId: id, selectedIds: [id] })
+    }
+  },
 
   toggleElementLocked: (id) => {
     set((s) => ({
@@ -340,6 +387,8 @@ export const useStore = create<CanvasStore>((set, get) => ({
 
   toggleSnapToGrid: () => set((s) => ({ snapToGrid: !s.snapToGrid })),
 
+  setZoom: (zoom) => set({ zoom: Math.max(0.25, Math.min(3, zoom)) }),
+
   importProject: (data) => {
     set({
       screens: data.screens,
@@ -348,6 +397,8 @@ export const useStore = create<CanvasStore>((set, get) => ({
       uiTheme: data.uiTheme ?? 'dark',
       activeScreenId: data.screens[0]?.id ?? '',
       selectedId: null,
+      selectedIds: [],
+      zoom: 1,
       past: [],
       future: [],
     })
@@ -407,6 +458,12 @@ export const useStore = create<CanvasStore>((set, get) => ({
   closeGameMode: () => set({ gameModeOpen: false }),
 
   setPreviewScreen: (id) => set({ previewScreenId: id }),
+
+  addVariable: (v) => set((s) => ({ variables: [...s.variables, { ...v, id: uuidv4() }] })),
+  removeVariable: (id) => set((s) => ({ variables: s.variables.filter((v) => v.id !== id) })),
+  updateVariable: (id, updates) => set((s) => ({
+    variables: s.variables.map((v) => v.id === id ? { ...v, ...updates } : v),
+  })),
 
   undo: () => {
     const { past, future, _snapshot } = get()

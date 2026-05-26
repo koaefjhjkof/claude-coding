@@ -3,7 +3,7 @@ import { useDraggable } from '@dnd-kit/core'
 import { PIECES, PIECE_CATEGORIES } from '../data/pieces'
 import { useStore, selectElements } from '../store/useStore'
 import { useUITheme } from '../hooks/useUITheme'
-import type { PieceDef } from '../types'
+import type { PieceDef, AppVariable } from '../types'
 
 // Icon lookup for layer rows (fallback to type initial)
 const PIECE_ICON: Record<string, string> = Object.fromEntries(PIECES.map((p) => [p.type, p.icon]))
@@ -250,16 +250,167 @@ function LayerBtn({ title, onClick, icon, active, danger, t }: {
   )
 }
 
+function VariablesPanel() {
+  const { variables, addVariable, removeVariable, updateVariable } = useStore()
+  const t = useUITheme()
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [newName, setNewName] = useState('')
+
+  function handleAdd() {
+    if (!newName.trim()) return
+    addVariable({ name: newName.trim(), defaultValue: '', type: 'text' })
+    setNewName('')
+  }
+
+  const TYPE_COLORS: Record<AppVariable['type'], string> = {
+    text: '#6366f1',
+    number: '#10b981',
+    boolean: '#f59e0b',
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ fontSize: 11, color: t.textDim, lineHeight: 1.5 }}>
+        Define global variables to use across your app.
+      </div>
+
+      {/* New variable input */}
+      <div style={{ display: 'flex', gap: 4 }}>
+        <input
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleAdd() }}
+          placeholder="variable name"
+          style={{
+            flex: 1, padding: '6px 9px',
+            background: t.bgInput, border: `1.5px solid ${t.borderMed}`,
+            borderRadius: 7, color: t.textPrimary, fontSize: 12,
+            fontFamily: 'Inter, sans-serif', outline: 'none',
+          }}
+        />
+        <button
+          onClick={handleAdd}
+          style={{
+            padding: '6px 10px', borderRadius: 7, border: 'none',
+            background: 'rgba(99,102,241,0.15)', color: '#a5b4fc',
+            fontSize: 12, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+          }}
+        >
+          + Add
+        </button>
+      </div>
+
+      {variables.length === 0 && (
+        <div style={{ fontSize: 12, color: t.textDim, textAlign: 'center', padding: '20px 0' }}>
+          No variables yet
+        </div>
+      )}
+
+      {/* Variable list */}
+      {variables.map((v) => (
+        <div key={v.id} style={{
+          borderRadius: 9, border: `1px solid ${t.border}`,
+          background: editingId === v.id ? 'rgba(99,102,241,0.06)' : t.bgPiece,
+          overflow: 'hidden',
+        }}>
+          {/* Header row */}
+          <div
+            style={{
+              display: 'flex', alignItems: 'center', gap: 7,
+              padding: '7px 10px', cursor: 'pointer',
+            }}
+            onClick={() => setEditingId(editingId === v.id ? null : v.id)}
+          >
+            <span style={{
+              fontSize: 9, fontWeight: 700, letterSpacing: '0.05em',
+              padding: '2px 6px', borderRadius: 4,
+              background: TYPE_COLORS[v.type] + '22',
+              color: TYPE_COLORS[v.type],
+            }}>{v.type.toUpperCase()}</span>
+            <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: t.textPrimary, fontFamily: 'monospace' }}>{v.name}</span>
+            <button
+              onClick={(e) => { e.stopPropagation(); removeVariable(v.id) }}
+              style={{
+                width: 18, height: 18, borderRadius: 4, border: 'none',
+                background: 'transparent', color: 'rgba(248,113,113,0.7)',
+                cursor: 'pointer', fontSize: 13, lineHeight: 1,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >×</button>
+          </div>
+
+          {/* Expanded editor */}
+          {editingId === v.id && (
+            <div style={{ padding: '4px 10px 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <span style={{ fontSize: 10, color: t.textDim }}>Name</span>
+                <input
+                  value={v.name}
+                  onChange={(e) => updateVariable(v.id, { name: e.target.value })}
+                  style={{ padding: '5px 8px', background: t.bgInput, border: `1px solid ${t.borderMed}`, borderRadius: 6, color: t.textPrimary, fontSize: 12, fontFamily: 'monospace', outline: 'none' }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: 5 }}>
+                {(['text', 'number', 'boolean'] as const).map((tp) => (
+                  <button
+                    key={tp}
+                    onClick={() => updateVariable(v.id, { type: tp })}
+                    style={{
+                      flex: 1, padding: '4px 0', borderRadius: 6,
+                      border: `1.5px solid ${v.type === tp ? TYPE_COLORS[tp] : t.border}`,
+                      background: v.type === tp ? TYPE_COLORS[tp] + '22' : 'transparent',
+                      color: v.type === tp ? TYPE_COLORS[tp] : t.textDim,
+                      fontSize: 10, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                    }}
+                  >{tp}</button>
+                ))}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <span style={{ fontSize: 10, color: t.textDim }}>Default value</span>
+                {v.type === 'boolean' ? (
+                  <div style={{ display: 'flex', gap: 5 }}>
+                    {['true', 'false'].map((bv) => (
+                      <button
+                        key={bv}
+                        onClick={() => updateVariable(v.id, { defaultValue: bv })}
+                        style={{
+                          flex: 1, padding: '5px 0', borderRadius: 6,
+                          border: `1.5px solid ${v.defaultValue === bv ? '#f59e0b' : t.border}`,
+                          background: v.defaultValue === bv ? '#f59e0b22' : 'transparent',
+                          color: v.defaultValue === bv ? '#f59e0b' : t.textDim,
+                          fontSize: 11, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                        }}
+                      >{bv}</button>
+                    ))}
+                  </div>
+                ) : (
+                  <input
+                    type={v.type === 'number' ? 'number' : 'text'}
+                    value={v.defaultValue}
+                    onChange={(e) => updateVariable(v.id, { defaultValue: e.target.value })}
+                    placeholder={v.type === 'number' ? '0' : 'value…'}
+                    style={{ padding: '5px 8px', background: t.bgInput, border: `1px solid ${t.borderMed}`, borderRadius: 6, color: t.textPrimary, fontSize: 12, fontFamily: 'Inter, sans-serif', outline: 'none' }}
+                  />
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function Sidebar() {
   const t = useUITheme()
   const { openCustomElementModal } = useStore()
-  const [tab, setTab] = useState<'elements' | 'layers'>('elements')
+  const [tab, setTab] = useState<'elements' | 'layers' | 'vars'>('elements')
 
   const tabStyle = (active: boolean) => ({
     flex: 1, padding: '6px 0', borderRadius: 7, border: 'none',
     background: active ? 'rgba(99,102,241,0.15)' : 'transparent',
     color: active ? '#a5b4fc' : t.textSecondary,
-    fontSize: 12, fontWeight: active ? 600 : 400,
+    fontSize: 11, fontWeight: active ? 600 : 400,
     cursor: 'pointer', fontFamily: 'Inter, sans-serif', transition: 'all 0.15s',
   })
 
@@ -272,9 +423,10 @@ export function Sidebar() {
       overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12,
     }}>
       {/* Tab bar */}
-      <div style={{ display: 'flex', gap: 3, background: t.bgInput, borderRadius: 10, padding: 3 }}>
+      <div style={{ display: 'flex', gap: 2, background: t.bgInput, borderRadius: 10, padding: 3 }}>
         <button style={tabStyle(tab === 'elements')} onClick={() => setTab('elements')}>Elements</button>
         <button style={tabStyle(tab === 'layers')} onClick={() => setTab('layers')}>Layers</button>
+        <button style={tabStyle(tab === 'vars')} onClick={() => setTab('vars')}>Vars</button>
       </div>
 
       {tab === 'elements' && (
@@ -329,6 +481,15 @@ export function Sidebar() {
             Layers (top → bottom)
           </div>
           <LayersPanel />
+        </div>
+      )}
+
+      {tab === 'vars' && (
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 11, color: t.textSecondary, textTransform: 'uppercase', letterSpacing: '0.08em', paddingLeft: 4, marginBottom: 10 }}>
+            Variables
+          </div>
+          <VariablesPanel />
         </div>
       )}
 

@@ -17,6 +17,12 @@ export type ElementType =
   | 'list'
   | 'tabbar'
   | 'searchbar'
+  | 'icon'
+  | 'dropdown'
+  | 'video'
+  | 'map'
+  | 'chart'
+  | 'stepper'
   | 'custom'
 
 export interface Flow {
@@ -41,8 +47,8 @@ export interface ElementProps {
   shadow?: boolean
   checked?: boolean
   badgeColor?: string
-  // New props
-  value?: number          // slider (0–100), progress (0–100), rating (1–5)
+  // Existing scalar props
+  value?: number          // slider (0–100), progress (0–100), rating (1–5), stepper
   min?: number
   max?: number
   initials?: string       // avatar
@@ -54,6 +60,29 @@ export interface ElementProps {
   // Custom element
   svg?: string            // raw SVG markup
   description?: string    // prompt used to generate it
+  // Typography (new)
+  fontFamily?: string
+  textAlign?: 'left' | 'center' | 'right'
+  // Icon element (new)
+  iconName?: string
+  // Dropdown element (new)
+  dropdownItems?: string  // comma-separated options
+  selectedItem?: string
+  // Video element (new)
+  videoUrl?: string
+  // Chart element (new)
+  chartType?: 'bar' | 'line' | 'pie'
+  chartData?: string      // comma-separated numbers
+  chartLabels?: string    // comma-separated labels
+  // Stepper element (new)
+  stepperStep?: number
+}
+
+export interface AppVariable {
+  id: string
+  name: string
+  defaultValue: string
+  type: 'text' | 'number' | 'boolean'
 }
 
 export interface CanvasElement {
