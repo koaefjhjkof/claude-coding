@@ -330,6 +330,58 @@ export function PropertiesPanel() {
           </>
         )}
 
+        {/* Font weight + text align for text/heading */}
+        {(type === 'text' || type === 'heading') && (
+          <>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 8 }}>Weight</div>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {(['300', '400', '500', '600', '700', '800'] as const).map((w) => {
+                  const current = props.fontWeight ?? (type === 'heading' ? '600' : '400')
+                  return (
+                    <button
+                      key={w}
+                      onClick={() => updateElementProps(selected.id, { fontWeight: w })}
+                      style={{
+                        flex: 1, padding: '5px 0', borderRadius: 6, border: '1.5px solid',
+                        borderColor: current === w ? '#6366f1' : t.borderStrong,
+                        background: current === w ? 'rgba(99,102,241,0.15)' : 'transparent',
+                        color: current === w ? t.accentText : t.textSecondary,
+                        fontSize: 10, cursor: 'pointer', fontFamily: 'Inter, sans-serif', fontWeight: w,
+                      }}
+                    >{w}</button>
+                  )
+                })}
+              </div>
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 8 }}>Align</div>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {([
+                  { v: 'left', icon: '⬅' },
+                  { v: 'center', icon: '↔' },
+                  { v: 'right', icon: '➡' },
+                ] as const).map(({ v, icon }) => {
+                  const current = (props as Record<string, unknown>).textAlign as string ?? 'left'
+                  return (
+                    <button
+                      key={v}
+                      onClick={() => updateElementProps(selected.id, { textAlign: v } as never)}
+                      style={{
+                        flex: 1, padding: '6px 0', borderRadius: 6, border: '1.5px solid',
+                        borderColor: current === v ? '#6366f1' : t.borderStrong,
+                        background: current === v ? 'rgba(99,102,241,0.15)' : 'transparent',
+                        color: current === v ? t.accentText : t.textSecondary,
+                        fontSize: 14, cursor: 'pointer',
+                      }}
+                    >{icon}</button>
+                  )
+                })}
+              </div>
+            </div>
+          </>
+        )}
+
         {/* Border radius */}
         {HAS_RADIUS.has(type) && (
           <SliderRow label="Roundness" value={props.borderRadius ?? globalRadius} min={0} max={40} onChange={(v) => updateElementProps(selected.id, { borderRadius: v })} t={t} />
@@ -494,7 +546,10 @@ function PosSizeInput({ label, value, min, onChange, t }: {
   function commit(raw: string) {
     setLocal(null)
     const n = parseInt(raw, 10)
-    if (!isNaN(n)) onChange(min !== undefined ? Math.max(min, n) : n)
+    if (!isNaN(n)) {
+      useStore.getState()._pushHistory()
+      onChange(min !== undefined ? Math.max(min, n) : n)
+    }
   }
 
   return (

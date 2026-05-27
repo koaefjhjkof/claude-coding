@@ -80,7 +80,7 @@ export function Toolbar() {
       display: 'flex', alignItems: 'center',
       padding: '0 16px', gap: 12,
       background: t.bgToolbar,
-      flexShrink: 0, overflow: 'hidden',
+      flexShrink: 0, overflowX: 'auto', overflowY: 'hidden',
     }}>
       {/* Logo */}
       <div style={{

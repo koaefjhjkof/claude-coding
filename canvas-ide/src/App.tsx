@@ -21,7 +21,7 @@ import { PIECES } from './data/pieces'
 import { DEVICE_SIZES } from './data/devices'
 
 export default function App() {
-  const { addElement, updateElement, device, selectedId, removeElement, duplicateElement, copyElement, pasteElement, undo, redo, previewMode, setPreviewMode, snapToGrid } = useStore()
+  const { addElement, updateElement, device, selectedId, removeElement, duplicateElement, copyElement, pasteElement, undo, redo, previewMode, setPreviewMode, snapToGrid, canvasZoom, setCanvasZoom } = useStore()
   const t = useUITheme()
   const elements = useStore(selectElements)
 
@@ -59,18 +59,27 @@ export default function App() {
         if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
           e.preventDefault(); pasteElement()
         }
+        if ((e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+')) {
+          e.preventDefault(); setCanvasZoom(canvasZoom + 0.1)
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key === '-') {
+          e.preventDefault(); setCanvasZoom(canvasZoom - 0.1)
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+          e.preventDefault(); setCanvasZoom(1)
+        }
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [selectedId, removeElement, duplicateElement, copyElement, pasteElement, undo, redo, previewMode, setPreviewMode])
+  }, [selectedId, removeElement, duplicateElement, copyElement, pasteElement, undo, redo, previewMode, setPreviewMode, canvasZoom, setCanvasZoom])
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over, delta } = event
     if (!active.data.current) return
 
     const dragData = active.data.current
-    const scale = DEVICE_SIZES[device].scale
+    const scale = DEVICE_SIZES[device].scale * canvasZoom
     const snap = (v: number) => snapToGrid ? Math.round(v / 8) * 8 : v
 
     if (dragData.type === 'PIECE' && over?.id === 'canvas') {
@@ -87,6 +96,7 @@ export default function App() {
     } else if (dragData.type === 'ELEMENT') {
       const el = elements.find((e) => e.id === dragData.elementId)
       if (!el) return
+      useStore.getState()._pushHistory()
       updateElement(dragData.elementId, {
         x: snap(Math.max(0, el.x + delta.x / scale)),
         y: snap(Math.max(0, el.y + delta.y / scale)),

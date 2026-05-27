@@ -49,6 +49,7 @@ export interface ElementProps {
   alertVariant?: 'info' | 'success' | 'warning' | 'error'
   items?: string          // list: newline-separated
   opacity?: number        // 0–1
+  textAlign?: 'left' | 'center' | 'right'
   tabs?: string           // tabbar: comma-separated tab names
   activeTab?: number      // tabbar: active tab index
   // Custom element

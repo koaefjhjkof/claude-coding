@@ -44,6 +44,7 @@ export function ElementRenderer({ element }: Props) {
             color: props.textColor ?? styles.textColor,
             fontSize: props.fontSize ?? 28, fontWeight: props.fontWeight ?? '600',
             fontFamily: 'Inter, sans-serif', lineHeight: 1.2,
+            textAlign: props.textAlign ?? 'left', justifyContent: props.textAlign === 'center' ? 'center' : props.textAlign === 'right' ? 'flex-end' : 'flex-start',
           }}>
             {props.text ?? 'Heading'}
           </div>
@@ -57,6 +58,9 @@ export function ElementRenderer({ element }: Props) {
             color: props.textColor ?? '#6b7280',
             fontSize: props.fontSize ?? 15, fontFamily: 'Inter, sans-serif',
             lineHeight: 1.6, overflow: 'hidden',
+            textAlign: props.textAlign ?? 'left',
+            justifyContent: props.textAlign === 'center' ? 'center' : props.textAlign === 'right' ? 'flex-end' : 'flex-start',
+            flexDirection: 'column',
           }}>
             {props.text ?? 'Your text goes here.'}
           </div>

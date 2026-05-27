@@ -24,6 +24,7 @@ interface CanvasStore {
   previewMode: boolean
   previewScreenId: string
   snapToGrid: boolean
+  canvasZoom: number
 
   // Clipboard
   clipboard: CanvasElement | null
@@ -58,6 +59,7 @@ interface CanvasStore {
   moveElementDown: (id: string) => void
   setScreenBackground: (color: string) => void
   toggleSnapToGrid: () => void
+  setCanvasZoom: (v: number) => void
   importProject: (data: { screens: Screen[]; styles: AppStyles; device: DeviceType; uiTheme: 'dark' | 'light' }) => void
 
   // Global style, device & misc
@@ -115,6 +117,7 @@ export const useStore = create<CanvasStore>((set, get) => ({
   previewMode: false,
   previewScreenId: DEFAULT_SCREEN_ID,
   snapToGrid: false,
+  canvasZoom: 1,
   gameModeOpen: false,
   clipboard: null,
   past: [],
@@ -261,6 +264,7 @@ export const useStore = create<CanvasStore>((set, get) => ({
   },
 
   alignElement: (id, align) => {
+    get()._pushHistory()
     const { device } = get()
     const { width: frameW, height: frameH } = DEVICE_SIZES[device]
     set((s) => {
@@ -339,6 +343,8 @@ export const useStore = create<CanvasStore>((set, get) => ({
   },
 
   toggleSnapToGrid: () => set((s) => ({ snapToGrid: !s.snapToGrid })),
+
+  setCanvasZoom: (v) => set({ canvasZoom: Math.max(0.25, Math.min(3, Math.round(v * 10) / 10)) }),
 
   importProject: (data) => {
     set({

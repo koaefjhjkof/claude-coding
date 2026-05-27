@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useStore, selectElements } from '../store/useStore'
 import { useUITheme } from '../hooks/useUITheme'
 
@@ -31,6 +31,11 @@ export function FlowModal() {
   const t = useUITheme()
 
   const otherScreens = screens.filter((s) => s.id !== activeScreenId)
+
+  useEffect(() => {
+    setTrigger('tap')
+    setDescription('')
+  }, [flowModalElementId])
 
   if (!flowModalElementId) return null
 
