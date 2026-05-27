@@ -64,7 +64,7 @@ const ALIGN_BUTTONS: { icon: string; title: string; align: AlignType }[] = [
 ]
 
 // Elements where per-element border-radius makes sense
-const HAS_RADIUS = new Set(['button', 'card', 'image', 'input', 'alert', 'searchbar', 'avatar', 'badge', 'progress'])
+const HAS_RADIUS = new Set(['button', 'card', 'image', 'input', 'alert', 'searchbar', 'avatar', 'badge', 'progress', 'video', 'map', 'chart', 'stat'])
 
 export function PropertiesPanel() {
   const { selectedId, updateElement, updateElementProps, openFlowModal, openCustomElementModal,
@@ -200,6 +200,93 @@ export function PropertiesPanel() {
           </div>
         )}
 
+        {type === 'video' && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 6 }}>Video URL</div>
+            <input value={props.src ?? ''} onChange={(e) => updateElementProps(selected.id, { src: e.target.value })} placeholder="Paste an MP4 or video URL…" style={inputStyle(t)} />
+          </div>
+        )}
+
+        {type === 'map' && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 6 }}>Location</div>
+            <input value={props.text ?? ''} onChange={(e) => updateElementProps(selected.id, { text: e.target.value })} placeholder="e.g. New York, USA" style={inputStyle(t)} />
+          </div>
+        )}
+
+        {type === 'chart' && (
+          <>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 6 }}>Title</div>
+              <input value={props.label ?? ''} onChange={(e) => updateElementProps(selected.id, { label: e.target.value })} placeholder="Monthly Sales" style={inputStyle(t)} />
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 6 }}>Data (comma-separated values)</div>
+              <input value={props.chartData ?? ''} onChange={(e) => updateElementProps(selected.id, { chartData: e.target.value })} placeholder="40,65,45,80,55,70,60" style={inputStyle(t)} />
+            </div>
+          </>
+        )}
+
+        {type === 'stat' && (
+          <>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 6 }}>Label</div>
+              <input value={props.statLabel ?? ''} onChange={(e) => updateElementProps(selected.id, { statLabel: e.target.value })} placeholder="Total Revenue" style={inputStyle(t)} />
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 6 }}>Value</div>
+              <input value={props.statValue ?? ''} onChange={(e) => updateElementProps(selected.id, { statValue: e.target.value })} placeholder="$12,400" style={inputStyle(t)} />
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 6 }}>Change (optional)</div>
+              <input value={props.statChange ?? ''} onChange={(e) => updateElementProps(selected.id, { statChange: e.target.value })} placeholder="12.5%" style={inputStyle(t)} />
+            </div>
+            {props.statChange && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                <span style={{ fontSize: 12, color: t.textSecondary, flex: 1 }}>Direction</span>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {(['up', 'down'] as const).map((dir) => (
+                    <button
+                      key={dir}
+                      onClick={() => updateElementProps(selected.id, { statUp: dir === 'up' })}
+                      style={{
+                        padding: '4px 10px', borderRadius: 6, border: '1.5px solid',
+                        borderColor: (props.statUp !== false) === (dir === 'up') ? '#6366f1' : t.borderStrong,
+                        background: (props.statUp !== false) === (dir === 'up') ? 'rgba(99,102,241,0.15)' : 'transparent',
+                        color: (props.statUp !== false) === (dir === 'up') ? t.accentText : t.textSecondary,
+                        fontSize: 11, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                      }}
+                    >
+                      {dir === 'up' ? '↑ Up' : '↓ Down'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {type === 'stepper' && (
+          <>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 6 }}>Steps (comma-separated)</div>
+              <input value={props.steps ?? ''} onChange={(e) => updateElementProps(selected.id, { steps: e.target.value })} placeholder="Step 1,Step 2,Step 3" style={inputStyle(t)} />
+            </div>
+            <SliderRow
+              label="Current step"
+              value={props.currentStep ?? 1}
+              min={0}
+              max={Math.max(0, (props.steps ?? 'Step 1,Step 2,Step 3').split(',').length - 1)}
+              onChange={(v) => updateElementProps(selected.id, { currentStep: v })}
+              t={t}
+            />
+          </>
+        )}
+
+        {type === 'skeleton' && (
+          <SliderRow label="Rows" value={props.skeletonRows ?? 3} min={1} max={8} onChange={(v) => updateElementProps(selected.id, { skeletonRows: v })} t={t} />
+        )}
+
         {type === 'image' && (
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 6 }}>Image URL</div>
@@ -321,6 +408,16 @@ export function PropertiesPanel() {
           <ColorRow label="Color" value={props.bgColor} onChange={(v) => updateElementProps(selected.id, { bgColor: v })} t={t} />
         )}
         {type === 'divider' && <ColorRow label="Line color" value={props.bgColor} onChange={(v) => updateElementProps(selected.id, { bgColor: v })} t={t} />}
+        {(type === 'chart' || type === 'stepper') && (
+          <ColorRow label="Color" value={props.bgColor} onChange={(v) => updateElementProps(selected.id, { bgColor: v })} t={t} />
+        )}
+        {type === 'stat' && (
+          <>
+            <ColorRow label="Background" value={props.bgColor} onChange={(v) => updateElementProps(selected.id, { bgColor: v })} t={t} />
+            <ColorRow label="Text color" value={props.textColor} onChange={(v) => updateElementProps(selected.id, { textColor: v })} t={t} />
+            <SliderRow label="Value size" value={props.fontSize} min={16} max={48} onChange={(v) => updateElementProps(selected.id, { fontSize: v })} t={t} />
+          </>
+        )}
 
         {/* Text color + font size */}
         {(type === 'text' || type === 'heading' || type === 'list') && (

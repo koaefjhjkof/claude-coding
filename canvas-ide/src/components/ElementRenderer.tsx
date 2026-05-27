@@ -363,67 +363,46 @@ export function ElementRenderer({ element }: Props) {
           <div style={{
             width: '100%', height: '100%', position: 'relative', overflow: 'hidden',
             borderRadius: props.borderRadius ?? globalRadius,
-            background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 60%, #1e1b4b 100%)',
+            background: '#000',
           }}>
-            <div style={{ position: 'absolute', inset: 0, opacity: 0.4,
-              backgroundImage: 'repeating-linear-gradient(0deg,transparent,transparent 40px,rgba(255,255,255,0.03) 40px,rgba(255,255,255,0.03) 41px)' }} />
-            <div style={{
-              position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-              width: 52, height: 52, borderRadius: '50%',
-              background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(8px)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <svg viewBox="0 0 24 24" width="22" height="22" fill="white">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-            </div>
-            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 32,
-              background: 'linear-gradient(transparent, rgba(0,0,0,0.6))',
-              display: 'flex', alignItems: 'center', padding: '0 12px', gap: 8 }}>
-              <div style={{ flex: 1, height: 3, background: 'rgba(255,255,255,0.25)', borderRadius: 2 }}>
-                <div style={{ width: '35%', height: '100%', background: styles.primaryColor, borderRadius: 2 }} />
+            {props.src ? (
+              <video
+                src={props.src}
+                controls
+                style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+              />
+            ) : (
+              <div style={{
+                position: 'absolute', inset: 0,
+                background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 60%, #1e1b4b 100%)',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                gap: 12, color: 'rgba(255,255,255,0.5)', fontFamily: 'Inter,sans-serif', fontSize: 13, textAlign: 'center',
+              }}>
+                <div style={{ fontSize: 34 }}>🎬</div>
+                <div style={{ lineHeight: 1.5 }}>Paste a video URL<br />in the Properties panel</div>
               </div>
-              <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.8)', fontFamily: 'Inter,monospace', flexShrink: 0 }}>0:42</span>
-            </div>
+            )}
           </div>
         )
 
       // ── Map ─────────────────────────────────────────────────────────────────
-      case 'map':
+      case 'map': {
+        const mapQuery = encodeURIComponent(props.text ?? 'New York, USA')
         return (
           <div style={{
-            width: '100%', height: '100%', position: 'relative', overflow: 'hidden',
+            width: '100%', height: '100%', overflow: 'hidden',
             borderRadius: props.borderRadius ?? globalRadius,
-            background: '#e8f5e9',
+            position: 'relative',
           }}>
-            <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
-              <defs>
-                <pattern id="mapgrid" width="28" height="28" patternUnits="userSpaceOnUse">
-                  <path d="M28 0L0 0 0 28" fill="none" stroke="rgba(0,0,0,0.05)" strokeWidth="1" />
-                </pattern>
-              </defs>
-              <rect width="100%" height="100%" fill="url(#mapgrid)" />
-              <line x1="0" y1="42%" x2="100%" y2="46%" stroke="rgba(255,255,255,0.8)" strokeWidth="7" />
-              <line x1="28%" y1="0" x2="32%" y2="100%" stroke="rgba(255,255,255,0.8)" strokeWidth="7" />
-              <line x1="62%" y1="0" x2="66%" y2="100%" stroke="rgba(255,255,255,0.6)" strokeWidth="5" />
-              <rect x="10%" y="20%" width="16%" height="18%" rx="3" fill="rgba(200,230,201,0.9)" />
-              <rect x="55%" y="55%" width="20%" height="14%" rx="3" fill="rgba(200,230,201,0.9)" />
-            </svg>
-            {/* pin */}
-            <div style={{ position: 'absolute', top: '32%', left: '50%', transform: 'translate(-50%,-100%)' }}>
-              <div style={{ width: 26, height: 26, borderRadius: '50% 50% 50% 0', transform: 'rotate(-45deg)',
-                background: styles.primaryColor, boxShadow: '0 2px 8px rgba(0,0,0,0.25)' }} />
-              <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'rgba(0,0,0,0.15)', margin: '2px auto 0' }} />
-            </div>
-            {/* label */}
-            <div style={{ position: 'absolute', bottom: 8, left: '50%', transform: 'translateX(-50%)',
-              background: 'rgba(255,255,255,0.92)', borderRadius: 8, padding: '4px 12px',
-              fontSize: 11, fontFamily: 'Inter,sans-serif', color: '#374151', whiteSpace: 'nowrap',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
-              {props.text ?? 'Current Location'}
-            </div>
+            <iframe
+              src={`https://maps.google.com/maps?q=${mapQuery}&output=embed&z=14`}
+              style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+              loading="lazy"
+              title="Map"
+            />
           </div>
         )
+      }
 
       // ── Bar Chart ───────────────────────────────────────────────────────────
       case 'chart': {

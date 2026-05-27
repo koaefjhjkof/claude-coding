@@ -634,7 +634,7 @@ export function PreviewMode() {
           boxShadow: '0 40px 100px rgba(0,0,0,0.6)',
           overflow: 'hidden', position: 'relative',
         }}>
-          <div style={{ position: 'absolute', inset: 0, background: '#faf8f5' }}>
+          <div style={{ position: 'absolute', inset: 0, background: currentScreen?.background ?? '#faf8f5' }}>
             {elements.length === 0 ? (
               <div style={{
                 position: 'absolute', inset: 0, display: 'flex',

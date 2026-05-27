@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { useStore } from '../store/useStore'
 import { useUITheme } from '../hooks/useUITheme'
-import { exportHtml } from '../utils/exportHtml'
+import { exportHtml, publishHtml } from '../utils/exportHtml'
 import { SettingsModal } from './SettingsModal'
 import { getApiKey } from '../utils/aiInterpretAction'
 import type { DeviceType } from '../types'
@@ -309,6 +309,8 @@ export function Toolbar() {
 
       {/* Publish */}
       <button
+        onClick={() => publishHtml(screens, styles)}
+        title="Open app in a new browser tab"
         style={{
           padding: '7px 16px', borderRadius: 8, border: 'none',
           background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',

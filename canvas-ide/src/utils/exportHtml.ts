@@ -144,6 +144,82 @@ function elementToHtml(el: CanvasElement, styles: AppStyles, screens: Screen[]):
         <span>${props.placeholder ?? 'Search…'}</span>
       </div>`
 
+    case 'video':
+      return props.src
+        ? `<video src="${props.src}" controls style="${base}object-fit:contain;border-radius:${r}px;background:#000;display:block;"></video>`
+        : `<div style="${base}background:#1e1b4b;border-radius:${r}px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.5);font-family:Inter,sans-serif;font-size:13px;">No video URL set</div>`
+
+    case 'map': {
+      const q = encodeURIComponent(props.text ?? 'New York, USA')
+      return `<iframe src="https://maps.google.com/maps?q=${q}&output=embed&z=14" style="${base}border:none;border-radius:${r}px;" loading="lazy" title="Map"></iframe>`
+    }
+
+    case 'chart': {
+      const raw = (props.chartData ?? '40,65,45,80,55,70,60').split(',')
+      const data = raw.map(v => Math.max(0, Math.min(100, parseFloat(v.trim()) || 0)))
+      const maxVal = Math.max(...data, 1)
+      const barColor = props.bgColor ?? styles.primaryColor
+      const bars = data.map((val, i) => {
+        const h = Math.round((val / maxVal) * 100)
+        const bg = i === data.length - 1 ? barColor : barColor + 'a0'
+        return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;height:100%;justify-content:flex-end;">
+          <div style="font-size:8px;color:#9ca3af;">${val}</div>
+          <div style="width:100%;border-radius:3px 3px 0 0;height:${h}%;background:${bg};min-height:3px;"></div>
+        </div>`
+      }).join('')
+      return `<div style="${base}display:flex;flex-direction:column;font-family:Inter,sans-serif;padding:8px 4px 4px;">
+        ${props.label ? `<div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:6px;padding-left:4px;">${props.label}</div>` : ''}
+        <div style="flex:1;display:flex;align-items:flex-end;gap:3px;overflow:hidden;">${bars}</div>
+      </div>`
+    }
+
+    case 'stat': {
+      const isUp = props.statUp !== false
+      return `<div style="${base}background:${props.bgColor ?? '#fff'};border-radius:${r}px;box-shadow:0 2px 12px rgba(0,0,0,0.07);padding:14px;display:flex;flex-direction:column;justify-content:space-between;font-family:Inter,sans-serif;">
+        <div style="font-size:11px;color:#6b7280;font-weight:500;">${props.statLabel ?? 'Total Revenue'}</div>
+        <div style="font-size:${props.fontSize ?? 26}px;font-weight:700;color:${props.textColor ?? '#111'};line-height:1.1;">${props.statValue ?? '$12,400'}</div>
+        ${props.statChange ? `<div style="display:flex;align-items:center;gap:4px;font-size:11px;">
+          <span style="color:${isUp ? '#10b981' : '#ef4444'};font-weight:600;">${isUp ? '↑' : '↓'} ${props.statChange}</span>
+          <span style="color:#9ca3af;">vs last period</span>
+        </div>` : ''}
+      </div>`
+    }
+
+    case 'stepper': {
+      const steps = (props.steps ?? 'Step 1,Step 2,Step 3').split(',').map(s => s.trim())
+      const current = props.currentStep ?? 1
+      const color = props.bgColor ?? styles.primaryColor
+      const nodes = steps.map((step, i) => {
+        const done = i < current, active = i === current
+        const circle = `<div style="width:28px;height:28px;border-radius:50%;background:${done || active ? color : '#e5e7eb'};display:flex;align-items:center;justify-content:center;color:${done || active ? '#fff' : '#9ca3af'};font-size:12px;font-weight:600;flex-shrink:0;">${done ? '✓' : i + 1}</div>`
+        const label = `<span style="font-size:10px;font-weight:${active ? 600 : 400};color:${active ? color : done ? '#6b7280' : '#9ca3af'};white-space:nowrap;text-align:center;max-width:60px;">${step}</span>`
+        return `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0;">${circle}${label}</div>`
+      })
+      const withLines: string[] = []
+      nodes.forEach((node, i) => {
+        withLines.push(node)
+        if (i < nodes.length - 1) withLines.push(`<div style="flex:1;height:2px;align-self:flex-start;margin-top:13px;background:${i < current ? color : '#e5e7eb'};"></div>`)
+      })
+      return `<div style="${base}display:flex;align-items:center;padding:0 8px;font-family:Inter,sans-serif;">${withLines.join('')}</div>`
+    }
+
+    case 'skeleton': {
+      const rows = props.skeletonRows ?? 3
+      const rowDivs = Array.from({ length: rows }, (_, i) =>
+        `<div style="height:12px;border-radius:6px;width:${90 - i * 14}%;background:linear-gradient(90deg,#f0f0f0 25%,#e0e0e0 50%,#f0f0f0 75%);"></div>`
+      ).join('')
+      return `<div style="${base}display:flex;flex-direction:column;gap:10px;padding:4px;">
+        <div style="display:flex;gap:10px;align-items:center;">
+          <div style="width:38px;height:38px;border-radius:50%;flex-shrink:0;background:linear-gradient(90deg,#f0f0f0 25%,#e0e0e0 50%,#f0f0f0 75%);"></div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:6px;">
+            <div style="height:12px;border-radius:6px;width:65%;background:linear-gradient(90deg,#f0f0f0 25%,#e0e0e0 50%,#f0f0f0 75%);"></div>
+            <div style="height:10px;border-radius:5px;width:40%;background:linear-gradient(90deg,#f0f0f0 25%,#e0e0e0 50%,#f0f0f0 75%);"></div>
+          </div>
+        </div>
+        ${rowDivs}
+      </div>`
+    }
+
     default:
       return ''
   }
@@ -156,10 +232,9 @@ function screenToHtml(screen: Screen, styles: AppStyles, screens: Screen[], isFi
   </div>`
 }
 
-export function exportHtml(screens: Screen[], styles: AppStyles) {
+function buildHtml(screens: Screen[], styles: AppStyles): string {
   const screenDivs = screens.map((s, i) => screenToHtml(s, styles, screens, i === 0)).join('\n')
-
-  const html = `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -210,9 +285,23 @@ ${screenDivs}
 </body>
 </html>`
 
+  return html
+}
+
+export function exportHtml(screens: Screen[], styles: AppStyles) {
+  const html = buildHtml(screens, styles)
   const blob = new Blob([html], { type: 'text/html' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url; a.download = 'my-app.html'; a.click()
   URL.revokeObjectURL(url)
+}
+
+export function publishHtml(screens: Screen[], styles: AppStyles) {
+  const html = buildHtml(screens, styles)
+  const blob = new Blob([html], { type: 'text/html' })
+  const url = URL.createObjectURL(blob)
+  const tab = window.open(url, '_blank')
+  if (!tab) URL.revokeObjectURL(url)
+  else setTimeout(() => URL.revokeObjectURL(url), 60000)
 }
