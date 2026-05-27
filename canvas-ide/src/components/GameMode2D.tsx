@@ -378,9 +378,11 @@ export function GameMode2D({ onBack }: { onBack: () => void }) {
     const down = (e: KeyboardEvent) => {
       keysRef.current.add(e.code)
       if (e.code === 'Escape' && playing) { setPlaying(false); setCamX(0) }
-      if ((e.code === 'Delete' || e.code === 'Backspace') && selectedId && !playing) {
+      const isInput = (e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA'
+      if ((e.code === 'Delete' || e.code === 'Backspace') && selectedId && !playing && !isInput) {
         setObjects(prev => prev.filter(o => o.id !== selectedId)); setSelectedId(null)
       }
+      if (playing && (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'ArrowDown')) e.preventDefault()
     }
     const up = (e: KeyboardEvent) => keysRef.current.delete(e.code)
     window.addEventListener('keydown', down); window.addEventListener('keyup', up)
@@ -421,7 +423,7 @@ export function GameMode2D({ onBack }: { onBack: () => void }) {
       const rect = e.currentTarget.getBoundingClientRect()
       const dx = (panStartX - e.clientX) * (820 / rect.width)
       setCamX(Math.max(0, Math.min(WORLD_W - 820, panStartCam + dx)))
-    } else if (selectedId) {
+    } else if (selectedId && e.buttons > 0) {
       const rect = e.currentTarget.getBoundingClientRect()
       const dx = e.movementX * (820 / rect.width)
       const dy = e.movementY * (480 / rect.height)
@@ -443,8 +445,12 @@ export function GameMode2D({ onBack }: { onBack: () => void }) {
                     borderBottom: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.3)', flexShrink: 0 }}>
         <button onClick={onBack} style={tbtn}>← Back</button>
         <span style={{ fontSize: 16, fontWeight: 700, color: '#e0e7ff' }}>2D Platformer</span>
-        {statusMsg && <span style={{ fontSize: 13, color: statusMsg.includes('win') ? '#4ade80' : '#f87171',
-                                     fontWeight: 600 }}>{statusMsg}</span>}
+        {statusMsg && <>
+          <span style={{ fontSize: 13, color: statusMsg.includes('win') ? '#4ade80' : '#f87171',
+                         fontWeight: 600 }}>{statusMsg}</span>
+          <button onClick={() => { setStatusMsg(null); setPlaying(true) }}
+            style={{ ...tbtn, color: '#818cf8', borderColor: 'rgba(129,140,248,0.4)' }}>↺ Restart</button>
+        </>}
         <div style={{ flex: 1 }} />
         {!playing && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
           Drag to pan · Click tool then click canvas to place · Drag objects to move

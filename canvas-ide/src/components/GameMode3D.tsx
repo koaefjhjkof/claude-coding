@@ -35,6 +35,7 @@ function buildMesh(obj: GObj3D): THREE.Object3D {
     )
     grp.add(light, sphere)
     grp.position.set(obj.x, obj.y, obj.z)
+    grp.userData.objId = obj.id
     return grp
   }
 
@@ -109,6 +110,7 @@ export function GameMode3D({ onBack }: { onBack: () => void }) {
   const meshMapRef = useRef<ThreeMeshMap>({})
   const rafRef    = useRef(0)
   const floorRef  = useRef<THREE.Mesh>()  // invisible raycast target
+  const boxHelperRef = useRef<THREE.BoxHelper | null>(null)
 
   // FPS play state refs
   const playingRef  = useRef(false)
@@ -178,6 +180,7 @@ export function GameMode3D({ onBack }: { onBack: () => void }) {
     let animId = 0
     const loop = () => {
       animId = requestAnimationFrame(loop)
+      if (boxHelperRef.current) boxHelperRef.current.update()
       controls.update()
       renderer.render(scene, camera)
     }
@@ -208,6 +211,21 @@ export function GameMode3D({ onBack }: { onBack: () => void }) {
       scene.add(mesh); map[obj.id] = mesh
     }
   }, [objects])
+
+  // ── Selection highlight ──────────────────────────────────────────────────
+  useEffect(() => {
+    const scene = sceneRef.current
+    if (!scene) return
+    if (boxHelperRef.current) { scene.remove(boxHelperRef.current); boxHelperRef.current = null }
+    if (selectedId && !playing) {
+      const mesh = meshMapRef.current[selectedId]
+      if (mesh) {
+        const helper = new THREE.BoxHelper(mesh, 0x818cf8)
+        scene.add(helper)
+        boxHelperRef.current = helper
+      }
+    }
+  }, [selectedId, objects, playing])
 
   // ── Raycasting click handler (edit mode) ─────────────────────────────────
   function handleClick(e: React.MouseEvent<HTMLDivElement>) {
@@ -333,6 +351,12 @@ export function GameMode3D({ onBack }: { onBack: () => void }) {
         }
       }
 
+      // Fall respawn
+      if (cam.position.y < -15) {
+        cam.position.set(startObj?.x ?? 0, 1.7, startObj?.z ?? 8)
+        velRef.current = { x: 0, y: 0, z: 0 }
+      }
+
       // Coin collection
       for (const coin of coinsRef.current) {
         if (coin.collected) continue
@@ -369,7 +393,11 @@ export function GameMode3D({ onBack }: { onBack: () => void }) {
     }
     document.addEventListener('mousemove', onMouseMove)
 
-    const kd = (e: KeyboardEvent) => { keysRef.current.add(e.code); if (e.code === 'Escape') { setPlaying(false) } }
+    const kd = (e: KeyboardEvent) => {
+      keysRef.current.add(e.code)
+      if (e.code === 'Escape') { setPlaying(false) }
+      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault()
+    }
     const ku = (e: KeyboardEvent) => keysRef.current.delete(e.code)
     window.addEventListener('keydown', kd); window.addEventListener('keyup', ku)
 
@@ -473,7 +501,7 @@ export function GameMode3D({ onBack }: { onBack: () => void }) {
                   ...(selectedObj.kind === 'light' ? [{ label: 'Intensity', field: 'intensity' }] : []),
                   ...(selectedObj.kind === 'ramp'  ? [{ label: 'Rotation Y', field: 'rotY' }] : []),
                 ] as { label: string; field: string }[]).map(({ label, field }) => (
-                  <div key={field} style={{ marginBottom: 8 }}>
+                  <div key={selectedObj.id + '-' + field} style={{ marginBottom: 8 }}>
                     <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginBottom: 3 }}>{label}</div>
                     <input type="number" step={0.5}
                       defaultValue={(selectedObj as Record<string, number>)[field] ?? 0}
