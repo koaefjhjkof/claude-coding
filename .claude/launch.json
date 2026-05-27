@@ -1,0 +1,12 @@
+{
+  "version": "0.1",
+  "servers": [
+    {
+      "name": "Canvas IDE",
+      "command": "npm run dev",
+      "cwd": "canvas-ide",
+      "port": 5173,
+      "url": "http://localhost:5173"
+    }
+  ]
+}
