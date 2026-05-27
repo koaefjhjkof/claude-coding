@@ -146,3 +146,39 @@ html, body, #root {
   0%,100% { box-shadow: 0 0 4px rgba(99,102,241,0.4); }
   50%      { box-shadow: 0 0 24px rgba(99,102,241,0.9); }
 }
+
+/* ── Element animation presets ─────────────────────────────────────────────── */
+@keyframes anim-pulse   { 0%,100%{transform:scale(1)}    50%{transform:scale(1.06)} }
+@keyframes anim-bounce  { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
+@keyframes anim-shake   { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-5px)} 75%{transform:translateX(5px)} }
+@keyframes anim-float   { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-7px)} }
+@keyframes anim-spin    { from{transform:rotate(0deg)}   to{transform:rotate(360deg)} }
+@keyframes anim-wiggle  { 0%,100%{transform:rotate(0deg)} 25%{transform:rotate(-4deg)} 75%{transform:rotate(4deg)} }
+@keyframes anim-glow    { 0%,100%{box-shadow:0 0 0px rgba(99,102,241,0)} 50%{box-shadow:0 0 20px rgba(99,102,241,0.7)} }
+@keyframes anim-fade-in { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+@keyframes anim-slide-up   { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
+@keyframes anim-slide-left { from{opacity:0;transform:translateX(24px)} to{opacity:1;transform:translateX(0)} }
+@keyframes anim-pop        { 0%{transform:scale(0.75);opacity:0} 60%{transform:scale(1.1)} 100%{transform:scale(1);opacity:1} }
+
+.anim-pulse      { animation: anim-pulse      2s    ease-in-out infinite; }
+.anim-bounce     { animation: anim-bounce     1.2s  ease-in-out infinite; }
+.anim-shake      { animation: anim-shake      0.5s  ease-in-out infinite; }
+.anim-float      { animation: anim-float      2.5s  ease-in-out infinite; }
+.anim-spin       { animation: anim-spin       2s    linear     infinite; }
+.anim-wiggle     { animation: anim-wiggle     1.5s  ease-in-out infinite; }
+.anim-glow       { animation: anim-glow       2s    ease-in-out infinite; }
+.anim-fade-in    { animation: anim-fade-in    0.6s  ease-out   forwards; }
+.anim-slide-up   { animation: anim-slide-up   0.55s ease-out   forwards; }
+.anim-slide-left { animation: anim-slide-left 0.55s ease-out   forwards; }
+.anim-pop        { animation: anim-pop        0.45s cubic-bezier(.36,.07,.19,.97) forwards; }
+
+/* ── Skeleton shimmer ──────────────────────────────────────────────────────── */
+@keyframes skeleton-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+.skeleton-shimmer {
+  background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%) !important;
+  background-size: 200% 100% !important;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}

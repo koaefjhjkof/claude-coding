@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { useDroppable, useDraggable } from '@dnd-kit/core'
+import { useDroppable, useDraggable, useDndContext } from '@dnd-kit/core'
 import { useStore, selectElements } from '../store/useStore'
 import { useUITheme } from '../hooks/useUITheme'
 import { ElementRenderer } from './ElementRenderer'
@@ -20,6 +20,13 @@ function DraggableElement({ element, device }: { element: CanvasElement; device:
     disabled: isLocked,
   })
 
+  const { active } = useDndContext()
+  const isAnimDrag = active?.data?.current?.type === 'ANIMATION'
+  const { setNodeRef: setDropRef, isOver: isAnimOver } = useDroppable({
+    id: `anim-drop-${element.id}`,
+    disabled: !isAnimDrag,
+  })
+
   const tx = transform?.x ?? 0
   const ty = transform?.y ?? 0
 
@@ -37,9 +44,14 @@ function DraggableElement({ element, device }: { element: CanvasElement; device:
     }
   }
 
+  const mergedRef = (node: HTMLDivElement | null) => {
+    setNodeRef(node)
+    setDropRef(node)
+  }
+
   return (
     <div
-      ref={setNodeRef}
+      ref={mergedRef}
       {...(editing ? {} : listeners)}
       {...attributes}
       className={`canvas-element${isSelected ? ' selected' : ''}`}
@@ -79,6 +91,16 @@ function DraggableElement({ element, device }: { element: CanvasElement; device:
         />
       ) : (
         <ElementRenderer element={element} />
+      )}
+
+      {/* Animation drop highlight */}
+      {isAnimDrag && isAnimOver && (
+        <div style={{
+          position: 'absolute', inset: -2, borderRadius: 10, pointerEvents: 'none', zIndex: 30,
+          border: '2px solid rgba(99,102,241,0.8)',
+          background: 'rgba(99,102,241,0.12)',
+          boxShadow: '0 0 0 4px rgba(99,102,241,0.15)',
+        }} />
       )}
 
       {/* Resize handle (hidden when locked) */}

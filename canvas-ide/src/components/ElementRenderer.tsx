@@ -1,3 +1,4 @@
+import { Fragment } from 'react'
 import type { CanvasElement } from '../types'
 import { useStore } from '../store/useStore'
 
@@ -356,6 +357,195 @@ export function ElementRenderer({ element }: Props) {
           </div>
         )
 
+      // ── Video ───────────────────────────────────────────────────────────────
+      case 'video':
+        return (
+          <div style={{
+            width: '100%', height: '100%', position: 'relative', overflow: 'hidden',
+            borderRadius: props.borderRadius ?? globalRadius,
+            background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 60%, #1e1b4b 100%)',
+          }}>
+            <div style={{ position: 'absolute', inset: 0, opacity: 0.4,
+              backgroundImage: 'repeating-linear-gradient(0deg,transparent,transparent 40px,rgba(255,255,255,0.03) 40px,rgba(255,255,255,0.03) 41px)' }} />
+            <div style={{
+              position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+              width: 52, height: 52, borderRadius: '50%',
+              background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(8px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="white">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </div>
+            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 32,
+              background: 'linear-gradient(transparent, rgba(0,0,0,0.6))',
+              display: 'flex', alignItems: 'center', padding: '0 12px', gap: 8 }}>
+              <div style={{ flex: 1, height: 3, background: 'rgba(255,255,255,0.25)', borderRadius: 2 }}>
+                <div style={{ width: '35%', height: '100%', background: styles.primaryColor, borderRadius: 2 }} />
+              </div>
+              <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.8)', fontFamily: 'Inter,monospace', flexShrink: 0 }}>0:42</span>
+            </div>
+          </div>
+        )
+
+      // ── Map ─────────────────────────────────────────────────────────────────
+      case 'map':
+        return (
+          <div style={{
+            width: '100%', height: '100%', position: 'relative', overflow: 'hidden',
+            borderRadius: props.borderRadius ?? globalRadius,
+            background: '#e8f5e9',
+          }}>
+            <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
+              <defs>
+                <pattern id="mapgrid" width="28" height="28" patternUnits="userSpaceOnUse">
+                  <path d="M28 0L0 0 0 28" fill="none" stroke="rgba(0,0,0,0.05)" strokeWidth="1" />
+                </pattern>
+              </defs>
+              <rect width="100%" height="100%" fill="url(#mapgrid)" />
+              <line x1="0" y1="42%" x2="100%" y2="46%" stroke="rgba(255,255,255,0.8)" strokeWidth="7" />
+              <line x1="28%" y1="0" x2="32%" y2="100%" stroke="rgba(255,255,255,0.8)" strokeWidth="7" />
+              <line x1="62%" y1="0" x2="66%" y2="100%" stroke="rgba(255,255,255,0.6)" strokeWidth="5" />
+              <rect x="10%" y="20%" width="16%" height="18%" rx="3" fill="rgba(200,230,201,0.9)" />
+              <rect x="55%" y="55%" width="20%" height="14%" rx="3" fill="rgba(200,230,201,0.9)" />
+            </svg>
+            {/* pin */}
+            <div style={{ position: 'absolute', top: '32%', left: '50%', transform: 'translate(-50%,-100%)' }}>
+              <div style={{ width: 26, height: 26, borderRadius: '50% 50% 50% 0', transform: 'rotate(-45deg)',
+                background: styles.primaryColor, boxShadow: '0 2px 8px rgba(0,0,0,0.25)' }} />
+              <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'rgba(0,0,0,0.15)', margin: '2px auto 0' }} />
+            </div>
+            {/* label */}
+            <div style={{ position: 'absolute', bottom: 8, left: '50%', transform: 'translateX(-50%)',
+              background: 'rgba(255,255,255,0.92)', borderRadius: 8, padding: '4px 12px',
+              fontSize: 11, fontFamily: 'Inter,sans-serif', color: '#374151', whiteSpace: 'nowrap',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+              {props.text ?? 'Current Location'}
+            </div>
+          </div>
+        )
+
+      // ── Bar Chart ───────────────────────────────────────────────────────────
+      case 'chart': {
+        const raw = (props.chartData ?? '40,65,45,80,55,70,60').split(',')
+        const data = raw.map(v => Math.max(0, Math.min(100, parseFloat(v.trim()) || 0)))
+        const maxVal = Math.max(...data, 1)
+        const barColor = props.bgColor ?? styles.primaryColor
+        return (
+          <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column',
+            fontFamily: 'Inter,sans-serif', padding: '8px 4px 4px' }}>
+            {props.label && (
+              <div style={{ fontSize: 12, fontWeight: 600, color: styles.textColor, marginBottom: 6, paddingLeft: 4 }}>
+                {props.label}
+              </div>
+            )}
+            <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', gap: 3, overflow: 'hidden' }}>
+              {data.map((val, i) => (
+                <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, height: '100%', justifyContent: 'flex-end' }}>
+                  <div style={{ fontSize: 8, color: '#9ca3af', lineHeight: 1 }}>{val}</div>
+                  <div style={{
+                    width: '100%', borderRadius: '3px 3px 0 0', minHeight: 3,
+                    height: `${(val / maxVal) * 100}%`,
+                    background: i === data.length - 1 ? barColor : barColor + 'a0',
+                  }} />
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      }
+
+      // ── Stepper ─────────────────────────────────────────────────────────────
+      case 'stepper': {
+        const steps = (props.steps ?? 'Step 1,Step 2,Step 3').split(',').map(s => s.trim())
+        const current = props.currentStep ?? 1
+        const color = props.bgColor ?? styles.primaryColor
+        const nodes: JSX.Element[] = []
+        steps.forEach((step, i) => {
+          const done = i < current, active = i === current
+          nodes.push(
+            <div key={`s${i}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+              <div style={{
+                width: 28, height: 28, borderRadius: '50%',
+                background: done || active ? color : '#e5e7eb',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: done || active ? '#fff' : '#9ca3af', fontSize: 12, fontWeight: 600,
+              }}>
+                {done ? '✓' : i + 1}
+              </div>
+              <span style={{
+                fontSize: 10, fontWeight: active ? 600 : 400,
+                color: active ? color : done ? '#6b7280' : '#9ca3af',
+                whiteSpace: 'nowrap', maxWidth: 60, textAlign: 'center', lineHeight: 1.2,
+              }}>
+                {step}
+              </span>
+            </div>
+          )
+          if (i < steps.length - 1) {
+            nodes.push(
+              <div key={`l${i}`} style={{ flex: 1, height: 2, alignSelf: 'flex-start', marginTop: 13,
+                background: i < current ? color : '#e5e7eb' }} />
+            )
+          }
+        })
+        return (
+          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', padding: '0 8px', fontFamily: 'Inter,sans-serif' }}>
+            {nodes}
+          </div>
+        )
+      }
+
+      // ── Stat Card ───────────────────────────────────────────────────────────
+      case 'stat': {
+        const isUp = props.statUp !== false
+        return (
+          <div style={{
+            width: '100%', height: '100%',
+            background: props.bgColor ?? '#ffffff',
+            borderRadius: props.borderRadius ?? globalRadius,
+            boxShadow: '0 2px 12px rgba(0,0,0,0.07)',
+            padding: props.padding ?? 14,
+            display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+            fontFamily: 'Inter,sans-serif',
+          }}>
+            <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 500, letterSpacing: '0.02em' }}>
+              {props.statLabel ?? 'Total Revenue'}
+            </div>
+            <div style={{ fontSize: props.fontSize ?? 26, fontWeight: 700, color: props.textColor ?? styles.textColor, lineHeight: 1.1 }}>
+              {props.statValue ?? '$12,400'}
+            </div>
+            {props.statChange && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}>
+                <span style={{ color: isUp ? '#10b981' : '#ef4444', fontWeight: 600 }}>
+                  {isUp ? '↑' : '↓'} {props.statChange}
+                </span>
+                <span style={{ color: '#9ca3af' }}>vs last period</span>
+              </div>
+            )}
+          </div>
+        )
+      }
+
+      // ── Skeleton ────────────────────────────────────────────────────────────
+      case 'skeleton': {
+        const rows = props.skeletonRows ?? 3
+        return (
+          <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', gap: 10, padding: 4 }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <div className="skeleton-shimmer" style={{ width: 38, height: 38, borderRadius: '50%', flexShrink: 0 }} />
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div className="skeleton-shimmer" style={{ height: 12, borderRadius: 6, width: '65%' }} />
+                <div className="skeleton-shimmer" style={{ height: 10, borderRadius: 5, width: '40%' }} />
+              </div>
+            </div>
+            {Array.from({ length: rows }).map((_, i) => (
+              <div key={i} className="skeleton-shimmer" style={{ height: 12, borderRadius: 6, width: `${90 - i * 14}%` }} />
+            ))}
+          </div>
+        )
+      }
+
       // ── Custom (AI-generated SVG) ────────────────────────────────────────────
       case 'custom':
         if (props.svg) {
@@ -384,7 +574,10 @@ export function ElementRenderer({ element }: Props) {
   }
 
   return (
-    <div style={{ width: '100%', height: '100%', opacity: props.opacity ?? 1 }}>
+    <div
+      style={{ width: '100%', height: '100%', opacity: props.opacity ?? 1 }}
+      className={props.animation ? `anim-${props.animation}` : undefined}
+    >
       {renderContent()}
     </div>
   )

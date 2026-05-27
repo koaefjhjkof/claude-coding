@@ -174,13 +174,94 @@ export const PIECES: PieceDef[] = [
     defaultHeight: 64,
     defaultProps: { tabs: 'Home,Explore,Profile', activeTab: 0 },
   },
+  {
+    type: 'stepper',
+    label: 'Stepper',
+    icon: '⋯',
+    description: 'Multi-step progress indicator',
+    defaultWidth: 320,
+    defaultHeight: 72,
+    defaultProps: { steps: 'Info,Payment,Review', currentStep: 1 },
+  },
+
+  // ── Data & Media ──────────────────────────────────────────────────────────
+  {
+    type: 'video',
+    label: 'Video',
+    icon: '▶',
+    description: 'Video player placeholder',
+    defaultWidth: 280,
+    defaultHeight: 160,
+    defaultProps: { borderRadius: 12 },
+  },
+  {
+    type: 'map',
+    label: 'Map',
+    icon: '📍',
+    description: 'Map with location pin',
+    defaultWidth: 280,
+    defaultHeight: 180,
+    defaultProps: { text: 'Current Location', borderRadius: 12 },
+  },
+  {
+    type: 'chart',
+    label: 'Bar Chart',
+    icon: '📊',
+    description: 'Vertical bar chart',
+    defaultWidth: 280,
+    defaultHeight: 160,
+    defaultProps: { label: 'Weekly Sales', chartData: '40,65,45,80,55,70,60' },
+  },
+  {
+    type: 'stat',
+    label: 'Stat Card',
+    icon: '◈',
+    description: 'KPI metric with trend',
+    defaultWidth: 160,
+    defaultHeight: 100,
+    defaultProps: { statLabel: 'Total Revenue', statValue: '$12,400', statChange: '+12%', statUp: true, bgColor: '#ffffff', borderRadius: 16 },
+  },
+
+  // ── Feedback & Status (extras) ────────────────────────────────────────────
+  {
+    type: 'skeleton',
+    label: 'Skeleton',
+    icon: '▒',
+    description: 'Loading placeholder',
+    defaultWidth: 280,
+    defaultHeight: 120,
+    defaultProps: { skeletonRows: 3 },
+  },
 ]
 
 export const PIECE_CATEGORIES = [
   { label: 'Buttons & Controls', types: ['button', 'toggle', 'checkbox', 'slider'] },
   { label: 'Text & Labels',      types: ['heading', 'text', 'badge', 'rating'] },
-  { label: 'Media',              types: ['image', 'avatar'] },
+  { label: 'Media',              types: ['image', 'avatar', 'video', 'map'] },
   { label: 'Input',              types: ['input', 'searchbar'] },
-  { label: 'Feedback',           types: ['alert', 'progress'] },
-  { label: 'Layout & Nav',       types: ['card', 'list', 'divider', 'tabbar'] },
+  { label: 'Data',               types: ['chart', 'stat'] },
+  { label: 'Feedback',           types: ['alert', 'progress', 'skeleton'] },
+  { label: 'Layout & Nav',       types: ['card', 'list', 'divider', 'tabbar', 'stepper'] },
+]
+
+export interface AnimationDef {
+  id: string
+  label: string
+  icon: string
+  description: string
+  loop: boolean
+}
+
+export const ANIMATIONS: AnimationDef[] = [
+  { id: 'pulse',      label: 'Pulse',      icon: '◎', description: 'Rhythmic scale pulse',    loop: true  },
+  { id: 'bounce',     label: 'Bounce',     icon: '↕', description: 'Bounces up and down',     loop: true  },
+  { id: 'shake',      label: 'Shake',      icon: '↔', description: 'Horizontal shake',        loop: true  },
+  { id: 'float',      label: 'Float',      icon: '◈', description: 'Gentle floating rise',    loop: true  },
+  { id: 'spin',       label: 'Spin',       icon: '↻', description: 'Continuous rotation',     loop: true  },
+  { id: 'wiggle',     label: 'Wiggle',     icon: '〰', description: 'Rotation wiggle',         loop: true  },
+  { id: 'glow',       label: 'Glow',       icon: '✧', description: 'Pulsing glow shadow',     loop: true  },
+  { id: 'fade-in',    label: 'Fade In',    icon: '◌', description: 'Fade up from transparent', loop: false },
+  { id: 'slide-up',   label: 'Slide Up',   icon: '⬆', description: 'Slide in from bottom',   loop: false },
+  { id: 'slide-left', label: 'Slide Left', icon: '⬅', description: 'Slide in from right',    loop: false },
+  { id: 'pop',        label: 'Pop',        icon: '✦', description: 'Scale pop entrance',      loop: false },
 ]

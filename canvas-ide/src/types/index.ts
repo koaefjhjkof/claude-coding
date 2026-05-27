@@ -18,6 +18,16 @@ export type ElementType =
   | 'tabbar'
   | 'searchbar'
   | 'custom'
+  | 'video'
+  | 'map'
+  | 'chart'
+  | 'stepper'
+  | 'stat'
+  | 'skeleton'
+
+export type AnimationPreset =
+  | 'pulse' | 'bounce' | 'shake' | 'fade-in' | 'slide-up'
+  | 'slide-left' | 'spin' | 'float' | 'pop' | 'wiggle' | 'glow'
 
 export interface Flow {
   id: string
@@ -54,6 +64,20 @@ export interface ElementProps {
   // Custom element
   svg?: string            // raw SVG markup
   description?: string    // prompt used to generate it
+  // Chart
+  chartData?: string      // comma-separated values e.g. "40,65,45,80"
+  // Stepper
+  steps?: string          // comma-separated step labels
+  currentStep?: number    // active step (0-indexed)
+  // Stat card
+  statValue?: string      // e.g. "$12,400"
+  statLabel?: string      // e.g. "Total Revenue"
+  statChange?: string     // e.g. "+12%"
+  statUp?: boolean        // true = green ↑, false = red ↓
+  // Skeleton
+  skeletonRows?: number   // number of content rows
+  // Animation
+  animation?: AnimationPreset
 }
 
 export interface CanvasElement {

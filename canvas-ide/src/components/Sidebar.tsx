@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useDraggable } from '@dnd-kit/core'
-import { PIECES, PIECE_CATEGORIES } from '../data/pieces'
+import { PIECES, PIECE_CATEGORIES, ANIMATIONS } from '../data/pieces'
 import { useStore, selectElements } from '../store/useStore'
 import { useUITheme } from '../hooks/useUITheme'
-import type { PieceDef } from '../types'
+import type { PieceDef, AnimationPreset } from '../types'
 
 // Icon lookup for layer rows (fallback to type initial)
 const PIECE_ICON: Record<string, string> = Object.fromEntries(PIECES.map((p) => [p.type, p.icon]))
@@ -250,10 +250,125 @@ function LayerBtn({ title, onClick, icon, active, danger, t }: {
   )
 }
 
+function AnimationCard({ anim, isActive, onApply }: {
+  anim: typeof ANIMATIONS[number]
+  isActive: boolean
+  onApply: () => void
+}) {
+  const t = useUITheme()
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `anim-${anim.id}`,
+    data: { type: 'ANIMATION', animationId: anim.id },
+  })
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      onClick={onApply}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '8px 10px', borderRadius: 10, cursor: 'grab',
+        background: isActive ? 'rgba(99,102,241,0.18)' : t.bgPiece,
+        border: `1px solid ${isActive ? 'rgba(99,102,241,0.5)' : t.bgPieceBorder}`,
+        opacity: isDragging ? 0.4 : 1,
+        userSelect: 'none', touchAction: 'none',
+        transition: 'background 0.12s, border-color 0.12s',
+      }}
+    >
+      {/* Live preview pill */}
+      <div style={{
+        width: 34, height: 34, borderRadius: 8, flexShrink: 0,
+        background: isActive ? 'rgba(99,102,241,0.25)' : 'rgba(99,102,241,0.10)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        overflow: 'hidden',
+      }}>
+        <div
+          className={`anim-${anim.id}`}
+          style={{ fontSize: 16, color: '#a5b4fc', lineHeight: 1 }}
+        >
+          {anim.icon}
+        </div>
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12, fontWeight: 500, color: isActive ? '#a5b4fc' : t.textPrimary, marginBottom: 1 }}>
+          {anim.label}
+          {!anim.loop && <span style={{ fontSize: 10, color: t.textDim, marginLeft: 5, fontWeight: 400 }}>once</span>}
+        </div>
+        <div style={{ fontSize: 11, color: t.textDim }}>{anim.description}</div>
+      </div>
+      {isActive && (
+        <div style={{ fontSize: 10, color: '#a5b4fc', flexShrink: 0 }}>✓</div>
+      )}
+    </div>
+  )
+}
+
+function AnimationsPanel() {
+  const t = useUITheme()
+  const { selectedId, updateElementProps } = useStore()
+  const elements = useStore(selectElements)
+  const selected = elements.find(e => e.id === selectedId)
+  const activeAnim = selected?.props.animation as AnimationPreset | undefined
+
+  function applyAnimation(animId: string) {
+    if (!selectedId) return
+    updateElementProps(selectedId, { animation: animId === activeAnim ? undefined : animId as AnimationPreset })
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {!selectedId && (
+        <div style={{
+          padding: '20px 10px', borderRadius: 12, textAlign: 'center',
+          background: t.bgPiece, border: `1px dashed ${t.bgPieceBorder}`,
+          color: t.textDim, fontSize: 12, lineHeight: 1.6,
+        }}>
+          <div style={{ fontSize: 22, marginBottom: 8 }}>✦</div>
+          Select an element on the canvas, then click or drag an animation onto it
+        </div>
+      )}
+
+      {selectedId && activeAnim && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
+          borderRadius: 8, background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.3)' }}>
+          <span style={{ fontSize: 11, color: '#a5b4fc', flex: 1 }}>Active: <strong>{activeAnim}</strong></span>
+          <button
+            onClick={() => updateElementProps(selectedId, { animation: undefined })}
+            style={{ fontSize: 10, color: '#f87171', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px',
+              borderRadius: 4, fontFamily: 'Inter,sans-serif' }}
+          >
+            Remove
+          </button>
+        </div>
+      )}
+
+      <div style={{ fontSize: 10, color: t.textDim, textTransform: 'uppercase', letterSpacing: '0.08em', paddingLeft: 4, marginTop: 2 }}>
+        Looping
+      </div>
+      {ANIMATIONS.filter(a => a.loop).map(anim => (
+        <AnimationCard key={anim.id} anim={anim}
+          isActive={activeAnim === anim.id}
+          onApply={() => applyAnimation(anim.id)} />
+      ))}
+
+      <div style={{ fontSize: 10, color: t.textDim, textTransform: 'uppercase', letterSpacing: '0.08em', paddingLeft: 4, marginTop: 6 }}>
+        Entrance
+      </div>
+      {ANIMATIONS.filter(a => !a.loop).map(anim => (
+        <AnimationCard key={anim.id} anim={anim}
+          isActive={activeAnim === anim.id}
+          onApply={() => applyAnimation(anim.id)} />
+      ))}
+    </div>
+  )
+}
+
 export function Sidebar() {
   const t = useUITheme()
   const { openCustomElementModal } = useStore()
-  const [tab, setTab] = useState<'elements' | 'layers'>('elements')
+  const [tab, setTab] = useState<'elements' | 'layers' | 'animations'>('elements')
 
   const tabStyle = (active: boolean) => ({
     flex: 1, padding: '6px 0', borderRadius: 7, border: 'none',
@@ -275,6 +390,7 @@ export function Sidebar() {
       <div style={{ display: 'flex', gap: 3, background: t.bgInput, borderRadius: 10, padding: 3 }}>
         <button style={tabStyle(tab === 'elements')} onClick={() => setTab('elements')}>Elements</button>
         <button style={tabStyle(tab === 'layers')} onClick={() => setTab('layers')}>Layers</button>
+        <button style={tabStyle(tab === 'animations')} onClick={() => setTab('animations')}>Animate</button>
       </div>
 
       {tab === 'elements' && (
@@ -321,6 +437,15 @@ export function Sidebar() {
             )
           })}
         </>
+      )}
+
+      {tab === 'animations' && (
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 11, color: t.textSecondary, textTransform: 'uppercase', letterSpacing: '0.08em', paddingLeft: 4, marginBottom: 10 }}>
+            Animations
+          </div>
+          <AnimationsPanel />
+        </div>
       )}
 
       {tab === 'layers' && (

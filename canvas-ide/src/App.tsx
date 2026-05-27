@@ -21,7 +21,7 @@ import { PIECES } from './data/pieces'
 import { DEVICE_SIZES } from './data/devices'
 
 export default function App() {
-  const { addElement, updateElement, device, selectedId, removeElement, duplicateElement, copyElement, pasteElement, undo, redo, previewMode, setPreviewMode, snapToGrid } = useStore()
+  const { addElement, updateElement, updateElementProps, device, selectedId, removeElement, duplicateElement, copyElement, pasteElement, undo, redo, previewMode, setPreviewMode, snapToGrid } = useStore()
   const t = useUITheme()
   const elements = useStore(selectElements)
 
@@ -91,6 +91,11 @@ export default function App() {
         x: snap(Math.max(0, el.x + delta.x / scale)),
         y: snap(Math.max(0, el.y + delta.y / scale)),
       })
+    } else if (dragData.type === 'ANIMATION' && over) {
+      // over.id is 'anim-drop-<elementId>' when dropped on an element
+      const overId = String(over.id)
+      const targetId = overId.startsWith('anim-drop-') ? overId.replace('anim-drop-', '') : null
+      if (targetId) updateElementProps(targetId, { animation: dragData.animationId })
     }
   }
 
