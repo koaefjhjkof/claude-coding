@@ -1,5 +1,9 @@
+import { memo } from 'react'
 import type { CanvasElement } from '../types'
 import { useStore } from '../store/useStore'
+
+// Defined at module level — never re-created
+const RADIUS_MAP = { sharp: 4, medium: 10, soft: 20 } as const
 
 // ─── Icon paths (Heroicons outline, viewBox 0 0 24 24) ────────────────────────
 const ICON_PATHS: Record<string, string> = {
@@ -45,12 +49,10 @@ interface Props {
   element: CanvasElement
 }
 
-export function ElementRenderer({ element }: Props) {
+export const ElementRenderer = memo(function ElementRenderer({ element }: Props) {
   const { type, props } = element
   const styles = useStore((s) => s.styles)
-
-  const radiusMap = { sharp: 4, medium: 10, soft: 20 }
-  const globalRadius = radiusMap[styles.borderRadius]
+  const globalRadius = RADIUS_MAP[styles.borderRadius]
 
   function renderContent() {
     switch (type) {
@@ -720,4 +722,4 @@ export function ElementRenderer({ element }: Props) {
       {renderContent()}
     </div>
   )
-}
+})

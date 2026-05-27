@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useStore, selectElements } from '../store/useStore'
+import { useStore, selectSelectedElement } from '../store/useStore'
 import { useUITheme } from '../hooks/useUITheme'
 import type { AlignType, CanvasElement, AppStyles } from '../types'
 import type { UITheme } from '../themes'
@@ -119,11 +119,10 @@ function generateRN(el: CanvasElement, appStyles: AppStyles): string {
 }
 
 export function PropertiesPanel() {
-  const { selectedId, updateElement, updateElementProps, openFlowModal, openCustomElementModal,
+  const { updateElement, updateElementProps, openFlowModal, openCustomElementModal,
           removeElement, duplicateElement, copyElement, pasteElement, alignElement, removeFlow,
           styles, clipboard } = useStore()
-  const elements = useStore(selectElements)
-  const selected = elements.find((e) => e.id === selectedId)
+  const selected = useStore(selectSelectedElement)
   const globalRadius = RADIUS_MAP[styles.borderRadius]
   const t = useUITheme()
   const [inspectMode, setInspectMode] = useState(false)

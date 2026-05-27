@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useCallback, lazy, Suspense } from 'react'
 import {
   DndContext,
   MouseSensor,
@@ -14,18 +14,20 @@ import { PropertiesPanel } from './components/PropertiesPanel'
 import { FlowModal } from './components/FlowModal'
 import { CustomElementModal } from './components/CustomElementModal'
 import { PreviewMode } from './components/PreviewMode'
-import { GameMode } from './components/GameMode'
 import { useStore, selectElements } from './store/useStore'
 import { useUITheme } from './hooks/useUITheme'
 import { PIECES } from './data/pieces'
 import { DEVICE_SIZES } from './data/devices'
 
+// Lazy-load GameMode so Three.js (~500 KB) is only fetched when the user opens it
+const GameMode = lazy(() =>
+  import('./components/GameMode').then((m) => ({ default: m.GameMode }))
+)
+
 export default function App() {
   const { addElement, updateElement, device, selectedId, selectedIds, removeElement, removeSelectedElements,
-          duplicateElement, copyElement, pasteElement, undo, redo, previewMode, setPreviewMode,
-          snapToGrid, zoom } = useStore()
+          duplicateElement, copyElement, pasteElement, undo, redo, previewMode, setPreviewMode } = useStore()
   const t = useUITheme()
-  const elements = useStore(selectElements)
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -68,13 +70,17 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [selectedId, selectedIds, removeElement, removeSelectedElements, duplicateElement, copyElement, pasteElement, undo, redo, previewMode, setPreviewMode])
 
-  function handleDragEnd(event: DragEndEvent) {
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over, delta } = event
     if (!active.data.current) return
 
+    // Read volatile values fresh from the store to keep deps minimal
+    const { zoom: curZoom, snapToGrid: curSnap, selectedIds: curIds } = useStore.getState()
+    const curElements = selectElements(useStore.getState())
+
     const dragData = active.data.current
-    const scale = DEVICE_SIZES[device].scale * zoom
-    const snap = (v: number) => snapToGrid ? Math.round(v / 8) * 8 : v
+    const scale = DEVICE_SIZES[device].scale * curZoom
+    const snap = (v: number) => curSnap ? Math.round(v / 8) * 8 : v
 
     if (dragData.type === 'PIECE' && over?.id === 'canvas') {
       const piece = PIECES.find((p) => p.type === dragData.pieceType)
@@ -88,15 +94,15 @@ export default function App() {
       const y = snap(Math.max(0, (translated.top - rect.top) / scale))
       addElement(piece.type, x, y, piece.defaultWidth, piece.defaultHeight, piece.defaultProps)
     } else if (dragData.type === 'ELEMENT') {
-      const el = elements.find((e) => e.id === dragData.elementId)
+      const el = curElements.find((e) => e.id === dragData.elementId)
       if (!el) return
       const dx = delta.x / scale
       const dy = delta.y / scale
 
       // Move all selected elements together if dragging one of them
-      if (selectedIds.includes(dragData.elementId) && selectedIds.length > 1) {
-        for (const sid of selectedIds) {
-          const sel = elements.find((e) => e.id === sid)
+      if (curIds.includes(dragData.elementId) && curIds.length > 1) {
+        for (const sid of curIds) {
+          const sel = curElements.find((e) => e.id === sid)
           if (sel) {
             updateElement(sid, {
               x: snap(Math.max(0, sel.x + dx)),
@@ -111,7 +117,7 @@ export default function App() {
         })
       }
     }
-  }
+  }, [device, addElement, updateElement])
 
   return (
     <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
@@ -126,7 +132,9 @@ export default function App() {
       <FlowModal />
       <CustomElementModal />
       {previewMode && <PreviewMode />}
-      <GameMode />
+      <Suspense fallback={null}>
+        <GameMode />
+      </Suspense>
     </DndContext>
   )
 }

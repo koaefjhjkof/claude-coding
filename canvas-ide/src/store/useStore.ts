@@ -497,3 +497,9 @@ export const selectElements = (s: CanvasStore) =>
 // Selector: preview screen's elements
 export const selectPreviewElements = (s: CanvasStore) =>
   s.screens.find((sc) => sc.id === s.previewScreenId)?.elements ?? []
+
+// Selector: the currently selected element (or null).
+// Granular — only triggers a re-render when the selected element itself changes,
+// not when other elements are added/moved/removed.
+export const selectSelectedElement = (s: CanvasStore) =>
+  s.screens.find((sc) => sc.id === s.activeScreenId)?.elements.find((el) => el.id === s.selectedId) ?? null

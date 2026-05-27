@@ -1,27 +1,33 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useCallback, memo } from 'react'
 import { useDroppable, useDraggable } from '@dnd-kit/core'
 import { useStore, selectElements } from '../store/useStore'
+import { useShallow } from 'zustand/react/shallow'
 import { useUITheme } from '../hooks/useUITheme'
 import { ElementRenderer } from './ElementRenderer'
 import { DEVICE_SIZES } from '../data/devices'
 import type { CanvasElement, DeviceType } from '../types'
 
-const INLINE_EDITABLE = ['button', 'heading', 'text', 'badge', 'toggle', 'input']
+// Module-level constants — defined once, never re-created
+const INLINE_EDITABLE = new Set(['button', 'heading', 'text', 'badge', 'toggle', 'input'])
+const ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3]
 
-function DraggableElement({
+// ─── DraggableElement ────────────────────────────────────────────────────────
+// Memoized so it only re-renders when its own props change.
+// Store access is intentionally via getState() inside event handlers
+// to avoid subscribing (and re-rendering) on unrelated state changes.
+const DraggableElement = memo(function DraggableElement({
   element,
   device,
   zoom,
+  isSelected,
   isInMultiSelect,
 }: {
   element: CanvasElement
   device: DeviceType
   zoom: number
+  isSelected: boolean
   isInMultiSelect: boolean
 }) {
-  const { selectedId, selectedIds, selectElement, updateElementProps } = useStore()
-  const isSelected = selectedId === element.id
-  const isMulti = isInMultiSelect && selectedIds.length > 1
   const [editing, setEditing] = useState(false)
   const isLocked = !!element.locked
 
@@ -39,6 +45,7 @@ function DraggableElement({
 
   function commitEdit(val: string) {
     setEditing(false)
+    const { updateElementProps } = useStore.getState()
     if (element.type === 'button' || element.type === 'badge' || element.type === 'toggle') {
       updateElementProps(element.id, { label: val })
     } else if (element.type === 'text' || element.type === 'heading') {
@@ -48,13 +55,16 @@ function DraggableElement({
     }
   }
 
-  // Selection ring color: purple for multi, blue for single
-  const selectionColor = isMulti ? 'rgba(99,102,241,0.6)' : '#6366f1'
+  // isInMultiSelect is true only when 2+ elements are selected and this is one of them
+  const selectionColor = isInMultiSelect ? 'rgba(99,102,241,0.6)' : '#6366f1'
   const selectionStyle =
-    isSelected || isMulti
+    isSelected || isInMultiSelect
       ? { outline: `2px solid ${selectionColor}`, outlineOffset: '1px' }
       : {}
-  const lockedStyle = isLocked && isSelected ? { outline: '2px dashed rgba(99,102,241,0.4)', outlineOffset: '1px' } : {}
+  const lockedStyle =
+    isLocked && isSelected
+      ? { outline: '2px dashed rgba(99,102,241,0.4)', outlineOffset: '1px' }
+      : {}
 
   return (
     <div
@@ -64,25 +74,28 @@ function DraggableElement({
       className={`canvas-element${isSelected ? ' selected' : ''}`}
       onClick={(e) => {
         e.stopPropagation()
-        selectElement(element.id, e.shiftKey)
+        useStore.getState().selectElement(element.id, e.shiftKey)
       }}
       onDoubleClick={(e) => {
         e.stopPropagation()
-        if (INLINE_EDITABLE.includes(element.type)) setEditing(true)
+        if (INLINE_EDITABLE.has(element.type)) setEditing(true)
       }}
       style={{
         position: 'absolute',
-        left: element.x + tx, top: element.y + ty,
-        width: element.width, height: element.height,
+        left: element.x + tx,
+        top: element.y + ty,
+        width: element.width,
+        height: element.height,
         cursor: editing ? 'text' : isLocked ? 'default' : isDragging ? 'grabbing' : 'grab',
         opacity: isDragging ? 0.6 : element.hidden ? 0.25 : 1,
-        userSelect: 'none', touchAction: 'none',
+        userSelect: 'none',
+        touchAction: 'none',
         zIndex: isSelected ? 10 : 1,
         ...selectionStyle,
         ...lockedStyle,
       }}
     >
-      {editing && INLINE_EDITABLE.includes(element.type) ? (
+      {editing && INLINE_EDITABLE.has(element.type) ? (
         <input
           autoFocus
           defaultValue={textValue}
@@ -104,7 +117,7 @@ function DraggableElement({
         <ElementRenderer element={element} />
       )}
 
-      {/* Resize handle (hidden when locked or not the primary selected) */}
+      {/* Resize handle — only for the primary selected element */}
       {isSelected && !isLocked && (
         <div
           style={{
@@ -115,12 +128,13 @@ function DraggableElement({
           }}
           onMouseDown={(e) => {
             e.stopPropagation()
-            useStore.getState()._pushHistory()
+            const store = useStore.getState()
+            store._pushHistory()
             const startX = e.clientX, startY = e.clientY
             const startW = element.width, startH = element.height
             const scale = DEVICE_SIZES[device].scale * zoom
             const onMove = (me: MouseEvent) => {
-              useStore.getState().updateElement(element.id, {
+              store.updateElement(element.id, {
                 width: Math.max(20, startW + (me.clientX - startX) / scale),
                 height: Math.max(10, startH + (me.clientY - startY) / scale),
               })
@@ -136,10 +150,25 @@ function DraggableElement({
       )}
     </div>
   )
-}
+})
 
+// ─── Canvas ──────────────────────────────────────────────────────────────────
 export function Canvas() {
-  const { device, selectElement, screens, activeScreenId, snapToGrid, zoom, setZoom, selectedIds } = useStore()
+  const {
+    device, selectedId, selectedIds, selectElement,
+    screens, activeScreenId, snapToGrid, zoom, setZoom,
+  } = useStore(useShallow((s) => ({
+    device: s.device,
+    selectedId: s.selectedId,
+    selectedIds: s.selectedIds,
+    selectElement: s.selectElement,
+    screens: s.screens,
+    activeScreenId: s.activeScreenId,
+    snapToGrid: s.snapToGrid,
+    zoom: s.zoom,
+    setZoom: s.setZoom,
+  })))
+
   const elements = useStore(selectElements)
   const canvasRef = useRef<HTMLDivElement>(null)
   const size = DEVICE_SIZES[device]
@@ -149,10 +178,8 @@ export function Canvas() {
 
   const { setNodeRef, isOver } = useDroppable({ id: 'canvas' })
 
-  const ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3]
-
-  function stepZoom(dir: 1 | -1) {
-    const cur = zoom
+  const stepZoom = useCallback((dir: 1 | -1) => {
+    const cur = useStore.getState().zoom
     if (dir === 1) {
       const next = ZOOM_STEPS.find((z) => z > cur + 0.01)
       setZoom(next ?? 3)
@@ -160,7 +187,7 @@ export function Canvas() {
       const prev = [...ZOOM_STEPS].reverse().find((z) => z < cur - 0.01)
       setZoom(prev ?? 0.25)
     }
-  }
+  }, [setZoom])
 
   return (
     <div
@@ -172,12 +199,11 @@ export function Canvas() {
       onWheel={(e) => {
         if (e.ctrlKey || e.metaKey) {
           e.preventDefault()
-          const delta = e.deltaY > 0 ? -0.08 : 0.08
-          setZoom(zoom + delta)
+          setZoom(zoom + (e.deltaY > 0 ? -0.08 : 0.08))
         }
       }}
     >
-      {/* Dot/grid overlay */}
+      {/* Dot/grid background */}
       <div style={{
         position: 'absolute', inset: 0,
         backgroundImage: snapToGrid
@@ -242,7 +268,8 @@ export function Canvas() {
                 element={el}
                 device={device}
                 zoom={zoom}
-                isInMultiSelect={selectedIds.includes(el.id)}
+                isSelected={selectedId === el.id}
+                isInMultiSelect={selectedIds.length > 1 && selectedIds.includes(el.id)}
               />
             ))}
           </div>
@@ -258,13 +285,16 @@ export function Canvas() {
       </div>
 
       {/* Zoom controls */}
-      <div style={{
-        position: 'absolute', bottom: 18, right: 20,
-        display: 'flex', alignItems: 'center', gap: 1,
-        background: t.bgPanel, border: `1px solid ${t.border}`,
-        borderRadius: 10, padding: '3px 4px',
-        boxShadow: '0 2px 12px rgba(0,0,0,0.12)',
-      }} onClick={(e) => e.stopPropagation()}>
+      <div
+        style={{
+          position: 'absolute', bottom: 18, right: 20,
+          display: 'flex', alignItems: 'center', gap: 1,
+          background: t.bgPanel, border: `1px solid ${t.border}`,
+          borderRadius: 10, padding: '3px 4px',
+          boxShadow: '0 2px 12px rgba(0,0,0,0.12)',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
         <ZoomBtn onClick={() => stepZoom(-1)} title="Zoom out (Ctrl+scroll)">−</ZoomBtn>
         <button
           onClick={() => setZoom(1)}
@@ -298,7 +328,16 @@ export function Canvas() {
   )
 }
 
-function ZoomBtn({ onClick, title, children }: { onClick: () => void; title: string; children: React.ReactNode }) {
+// ─── ZoomBtn ─────────────────────────────────────────────────────────────────
+function ZoomBtn({
+  onClick,
+  title,
+  children,
+}: {
+  onClick: () => void
+  title: string
+  children: React.ReactNode
+}) {
   const t = useUITheme()
   return (
     <button
