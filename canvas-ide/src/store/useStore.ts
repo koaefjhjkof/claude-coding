@@ -87,6 +87,9 @@ interface CanvasStore {
   // History
   undo: () => void
   redo: () => void
+
+  // Auto-layout
+  makePretty: () => void
 }
 
 const DEFAULT_SCREEN_ID = uuidv4()
@@ -97,6 +100,47 @@ const INITIAL_STYLES: AppStyles = {
   backgroundColor: '#ffffff',
   textColor: '#111827',
   borderRadius: 'medium',
+}
+
+// Per-type canonical heights used by makePretty
+const PRETTY_H: Record<string, number> = {
+  heading: 44, text: 72, button: 50, input: 48, searchbar: 48,
+  card: 180, image: 200, avatar: 64, badge: 36, slider: 56,
+  progress: 48, rating: 40, alert: 52, divider: 16, list: 110,
+  stat: 110, chart: 180, stepper: 72, video: 210, map: 200,
+  skeleton: 120, checkbox: 36, toggle: 44, custom: 120,
+}
+
+function prettifyProps(type: string, props: ElementProps, styles: AppStyles, r: number): ElementProps {
+  const p: ElementProps = { ...props }
+  switch (type) {
+    case 'heading':
+      p.fontSize = p.fontSize ?? 26; p.fontWeight = p.fontWeight ?? '700'
+      p.textColor = p.textColor ?? styles.textColor; break
+    case 'text':
+      p.fontSize = p.fontSize ?? 15; p.textColor = p.textColor ?? '#6b7280'; break
+    case 'button':
+      if (!p.bgColor) p.bgColor = styles.primaryColor
+      p.textColor = p.textColor ?? '#ffffff'; p.borderRadius = r; break
+    case 'input': case 'searchbar': case 'alert':
+      p.borderRadius = r; break
+    case 'card':
+      p.shadow = true; p.bgColor = p.bgColor ?? '#ffffff'
+      p.borderRadius = r + 6; p.padding = 20; break
+    case 'stat':
+      p.bgColor = p.bgColor ?? '#ffffff'; p.borderRadius = r + 6; break
+    case 'badge':
+      p.badgeColor = p.badgeColor ?? styles.primaryColor; break
+    case 'avatar':
+      p.bgColor = p.bgColor ?? styles.primaryColor; break
+    case 'slider': case 'progress': case 'checkbox': case 'stepper':
+      p.bgColor = p.bgColor ?? styles.primaryColor; break
+    case 'tabbar':
+      p.bgColor = p.bgColor ?? styles.primaryColor; break
+    case 'image': case 'video': case 'map': case 'chart':
+      p.borderRadius = r + 6; break
+  }
+  return p
 }
 
 function applySnapshot(state: CanvasStore, snap: HistorySnapshot): Partial<CanvasStore> {
@@ -429,6 +473,65 @@ export const useStore = create<CanvasStore>((set, get) => ({
       ...applySnapshot(s as CanvasStore, next),
       past: [...s.past.slice(-49), current],
       future: s.future.slice(1),
+    }))
+  },
+
+  makePretty: () => {
+    const { activeScreenId, screens, device, styles } = get()
+    const screen = screens.find(s => s.id === activeScreenId)
+    if (!screen || screen.elements.length === 0) return
+
+    get()._pushHistory()
+
+    const { width: frameW, height: frameH } = DEVICE_SIZES[device]
+    const pad = 20
+    const gap = 16
+    const contentW = frameW - pad * 2
+    const radiusMap = { sharp: 4, medium: 12, soft: 24 }
+    const r = radiusMap[styles.borderRadius]
+
+    // Tabbars always pin to bottom
+    const tabbars = screen.elements.filter(e => e.type === 'tabbar')
+    const rest = screen.elements.filter(e => e.type !== 'tabbar')
+
+    // Sort by original Y position so reading order is preserved
+    rest.sort((a, b) => a.y !== b.y ? a.y - b.y : a.x - b.x)
+
+    let currentY = 28
+
+    const prettified = rest.map(el => {
+      const h = PRETTY_H[el.type] ?? el.height
+      let w = contentW
+      let x = pad
+
+      // Small/square elements: keep intrinsic size, center horizontally
+      if (el.type === 'avatar') {
+        w = 64; x = Math.round((frameW - 64) / 2)
+      } else if (el.type === 'badge') {
+        w = Math.min(el.width, 140); x = pad
+      } else if (el.type === 'divider') {
+        w = contentW; x = pad
+      }
+
+      const props = prettifyProps(el.type, el.props, styles, r)
+      const updated = { ...el, x, y: currentY, width: w, height: h, props }
+      currentY += h + gap
+      return updated
+    })
+
+    const prettifiedTabs = tabbars.map(el => ({
+      ...el,
+      x: 0, y: frameH - 64, width: frameW, height: 64,
+      props: prettifyProps(el.type, el.props, styles, r),
+    }))
+
+    set(s => ({
+      screens: s.screens.map(sc =>
+        sc.id === activeScreenId
+          ? { ...sc, elements: [...prettified, ...prettifiedTabs] }
+          : sc
+      ),
+      selectedId: null,
     }))
   },
 }))

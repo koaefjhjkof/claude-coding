@@ -29,8 +29,15 @@ const COLOR_PALETTES = [
 export function Toolbar() {
   const { device, setDevice, styles, updateStyles, undo, redo, past, future, previewMode, setPreviewMode,
           screens, activeScreenId, uiTheme, setUiTheme, snapToGrid, toggleSnapToGrid,
-          setScreenBackground, importProject, openGameMode } = useStore()
+          setScreenBackground, importProject, openGameMode, makePretty } = useStore()
   const [showSettings, setShowSettings] = useState(false)
+  const [prettyDone, setPrettyDone] = useState(false)
+
+  function handleMakePretty() {
+    makePretty()
+    setPrettyDone(true)
+    setTimeout(() => setPrettyDone(false), 1800)
+  }
   const hasKey = !!getApiKey()
   const t = useUITheme()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -249,6 +256,23 @@ export function Toolbar() {
       </button>
 
       {sep}
+
+      {/* Make it Pretty */}
+      <button
+        onClick={handleMakePretty}
+        title="Auto-layout and polish all elements"
+        style={{
+          padding: '6px 14px', borderRadius: 8,
+          border: `1px solid ${prettyDone ? 'rgba(16,185,129,0.5)' : 'rgba(99,102,241,0.4)'}`,
+          background: prettyDone ? 'rgba(16,185,129,0.15)' : 'rgba(99,102,241,0.1)',
+          color: prettyDone ? '#10b981' : '#a5b4fc',
+          fontSize: 12, fontWeight: 500, cursor: 'pointer',
+          fontFamily: 'Inter, sans-serif', flexShrink: 0,
+          transition: 'all 0.3s',
+        }}
+      >
+        {prettyDone ? '✓ Done!' : '✨ Make it Pretty'}
+      </button>
 
       {/* Game Mode */}
       <button
