@@ -1,12 +1,89 @@
-import { useState } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { useDraggable } from '@dnd-kit/core'
 import { PIECES, PIECE_CATEGORIES } from '../data/pieces'
 import { useStore, selectElements } from '../store/useStore'
 import { useUITheme } from '../hooks/useUITheme'
-import type { PieceDef } from '../types'
+import { DatabasePanel } from './DatabasePanel'
+import type { PieceDef, AppVariable } from '../types'
 
 // Icon lookup for layer rows (fallback to type initial)
 const PIECE_ICON: Record<string, string> = Object.fromEntries(PIECES.map((p) => [p.type, p.icon]))
+
+// ── Animation presets ────────────────────────────────────────────────────────
+const ANIMATION_PRESETS = [
+  { label: 'Shake',       icon: '〜', color: '#f59e0b', trigger: 'tap',  description: 'shake',                  action: '' },
+  { label: 'Bounce',      icon: '↕',  color: '#10b981', trigger: 'tap',  description: 'bounce',                 action: '' },
+  { label: 'Pulse',       icon: '◉',  color: '#6366f1', trigger: 'load', description: 'pulse loop infinite',    action: '' },
+  { label: 'Spin',        icon: '↻',  color: '#8b5cf6', trigger: 'tap',  description: 'spin rotate 360',       action: '' },
+  { label: 'Fade In',     icon: '◎',  color: '#06b6d4', trigger: 'load', description: 'fade-in appear',        action: '' },
+  { label: 'Slide In',    icon: '→',  color: '#3b82f6', trigger: 'load', description: 'slide-in fly-in',       action: '' },
+  { label: 'Wiggle',      icon: '≋',  color: '#f97316', trigger: 'tap',  description: 'wiggle wobble',         action: '' },
+  { label: 'Flash',       icon: '⚡', color: '#eab308', trigger: 'tap',  description: 'flash blink',           action: '' },
+  { label: 'Tada',        icon: '✦',  color: '#ec4899', trigger: 'tap',  description: 'tada celebrate',        action: '' },
+  { label: 'Rubber Band', icon: '⇔',  color: '#10b981', trigger: 'tap',  description: 'rubber-band stretch',   action: '' },
+  { label: 'Jello',       icon: '〰', color: '#a78bfa', trigger: 'tap',  description: 'jello',                 action: '' },
+  { label: 'Heartbeat',   icon: '♥',  color: '#ef4444', trigger: 'load', description: 'heartbeat loop infinite', action: '' },
+  { label: 'Flip',        icon: '⟲',  color: '#6366f1', trigger: 'tap',  description: 'flip',                  action: '' },
+  { label: 'Swing',       icon: '∿',  color: '#f59e0b', trigger: 'tap',  description: 'swing',                 action: '' },
+  { label: 'Glow',        icon: '✧',  color: '#06b6d4', trigger: 'tap',  description: 'glow light-up',         action: '' },
+  { label: 'Fade Out',    icon: '○',  color: '#64748b', trigger: 'tap',  description: 'fade-out disappear',    action: '' },
+] as const
+
+function AnimationCard({ preset }: { preset: typeof ANIMATION_PRESETS[number] }) {
+  const t = useUITheme()
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `anim-${preset.label}`,
+    data: {
+      type: 'ANIMATION',
+      animDef: { trigger: preset.trigger, description: preset.description, action: preset.action },
+    },
+  })
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      title={`${preset.label} — trigger: on ${preset.trigger}`}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 9,
+        padding: '8px 10px', borderRadius: 10,
+        background: t.bgPiece, border: `1px solid ${t.bgPieceBorder}`,
+        cursor: 'grab', opacity: isDragging ? 0.4 : 1,
+        userSelect: 'none', touchAction: 'none',
+        transition: 'background 0.12s',
+      }}
+    >
+      <div style={{
+        width: 30, height: 30, borderRadius: 8, flexShrink: 0,
+        background: preset.color + '22',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 14, color: preset.color,
+      }}>
+        {preset.icon}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12, fontWeight: 500, color: t.textPrimary }}>{preset.label}</div>
+        <div style={{ fontSize: 10, color: t.textDim }}>on {preset.trigger}</div>
+      </div>
+      <div style={{ fontSize: 9, color: t.textDim, opacity: 0.7, flexShrink: 0 }}>drag</div>
+    </div>
+  )
+}
+
+function AnimationsPanel() {
+  const t = useUITheme()
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ fontSize: 11, color: t.textDim, lineHeight: 1.5, marginBottom: 4 }}>
+        Drag an effect onto a selected element. It will trigger in Preview mode.
+      </div>
+      {ANIMATION_PRESETS.map((preset) => (
+        <AnimationCard key={preset.label} preset={preset} />
+      ))}
+    </div>
+  )
+}
 PIECE_ICON['custom'] = '✦'
 
 function elementLabel(el: { type: string; props: Record<string, string | number | undefined> }): string {
@@ -17,13 +94,76 @@ function elementLabel(el: { type: string; props: Record<string, string | number 
   return el.type.charAt(0).toUpperCase() + el.type.slice(1)
 }
 
-function PieceCard({ piece }: { piece: PieceDef }) {
+type IconDensity = 'compact' | 'normal' | 'large'
+
+function PieceCard({ piece, density = 'normal' }: { piece: PieceDef; density?: IconDensity }) {
   const t = useUITheme()
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `piece-${piece.type}`,
     data: { type: 'PIECE', pieceType: piece.type, piece },
   })
 
+  if (density === 'compact') {
+    return (
+      <div
+        ref={setNodeRef}
+        {...listeners}
+        {...attributes}
+        className="piece-card"
+        title={piece.label}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 7,
+          padding: '5px 8px', borderRadius: 7,
+          background: t.bgPiece, border: `1px solid ${t.bgPieceBorder}`,
+          cursor: 'grab', opacity: isDragging ? 0.4 : 1,
+          userSelect: 'none', touchAction: 'none',
+        }}
+      >
+        <div style={{
+          width: 22, height: 22, borderRadius: 6,
+          background: 'rgba(99,102,241,0.12)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 11, fontWeight: 700, color: '#a5b4fc', flexShrink: 0,
+        }}>
+          {piece.icon}
+        </div>
+        <div style={{ fontSize: 11, fontWeight: 500, color: t.textPrimary }}>{piece.label}</div>
+      </div>
+    )
+  }
+
+  if (density === 'large') {
+    return (
+      <div
+        ref={setNodeRef}
+        {...listeners}
+        {...attributes}
+        className="piece-card"
+        style={{
+          display: 'flex', alignItems: 'center', gap: 12,
+          padding: '12px 14px', borderRadius: 12,
+          background: t.bgPiece, border: `1px solid ${t.bgPieceBorder}`,
+          cursor: 'grab', opacity: isDragging ? 0.4 : 1,
+          userSelect: 'none', touchAction: 'none',
+        }}
+      >
+        <div style={{
+          width: 42, height: 42, borderRadius: 10,
+          background: 'rgba(99,102,241,0.12)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 20, fontWeight: 700, color: '#a5b4fc', flexShrink: 0,
+        }}>
+          {piece.icon}
+        </div>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: t.textPrimary, marginBottom: 3 }}>{piece.label}</div>
+          <div style={{ fontSize: 11, color: t.textDim, lineHeight: 1.4 }}>{piece.description}</div>
+        </div>
+      </div>
+    )
+  }
+
+  // normal (default)
   return (
     <div
       ref={setNodeRef}
@@ -250,35 +390,240 @@ function LayerBtn({ title, onClick, icon, active, danger, t }: {
   )
 }
 
+function VariablesPanel() {
+  const { variables, addVariable, removeVariable, updateVariable } = useStore()
+  const t = useUITheme()
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [newName, setNewName] = useState('')
+
+  function handleAdd() {
+    if (!newName.trim()) return
+    addVariable({ name: newName.trim(), defaultValue: '', type: 'text' })
+    setNewName('')
+  }
+
+  const TYPE_COLORS: Record<AppVariable['type'], string> = {
+    text: '#6366f1',
+    number: '#10b981',
+    boolean: '#f59e0b',
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ fontSize: 11, color: t.textDim, lineHeight: 1.5 }}>
+        Define global variables to use across your app.
+      </div>
+
+      {/* New variable input */}
+      <div style={{ display: 'flex', gap: 4 }}>
+        <input
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleAdd() }}
+          placeholder="variable name"
+          style={{
+            flex: 1, padding: '6px 9px',
+            background: t.bgInput, border: `1.5px solid ${t.borderMed}`,
+            borderRadius: 7, color: t.textPrimary, fontSize: 12,
+            fontFamily: 'Inter, sans-serif', outline: 'none',
+          }}
+        />
+        <button
+          onClick={handleAdd}
+          style={{
+            padding: '6px 10px', borderRadius: 7, border: 'none',
+            background: 'rgba(99,102,241,0.15)', color: '#a5b4fc',
+            fontSize: 12, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+          }}
+        >
+          + Add
+        </button>
+      </div>
+
+      {variables.length === 0 && (
+        <div style={{ fontSize: 12, color: t.textDim, textAlign: 'center', padding: '20px 0' }}>
+          No variables yet
+        </div>
+      )}
+
+      {/* Variable list */}
+      {variables.map((v) => (
+        <div key={v.id} style={{
+          borderRadius: 9, border: `1px solid ${t.border}`,
+          background: editingId === v.id ? 'rgba(99,102,241,0.06)' : t.bgPiece,
+          overflow: 'hidden',
+        }}>
+          {/* Header row */}
+          <div
+            style={{
+              display: 'flex', alignItems: 'center', gap: 7,
+              padding: '7px 10px', cursor: 'pointer',
+            }}
+            onClick={() => setEditingId(editingId === v.id ? null : v.id)}
+          >
+            <span style={{
+              fontSize: 9, fontWeight: 700, letterSpacing: '0.05em',
+              padding: '2px 6px', borderRadius: 4,
+              background: TYPE_COLORS[v.type] + '22',
+              color: TYPE_COLORS[v.type],
+            }}>{v.type.toUpperCase()}</span>
+            <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: t.textPrimary, fontFamily: 'monospace' }}>{v.name}</span>
+            <button
+              onClick={(e) => { e.stopPropagation(); removeVariable(v.id) }}
+              style={{
+                width: 18, height: 18, borderRadius: 4, border: 'none',
+                background: 'transparent', color: 'rgba(248,113,113,0.7)',
+                cursor: 'pointer', fontSize: 13, lineHeight: 1,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >×</button>
+          </div>
+
+          {/* Expanded editor */}
+          {editingId === v.id && (
+            <div style={{ padding: '4px 10px 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <span style={{ fontSize: 10, color: t.textDim }}>Name</span>
+                <input
+                  value={v.name}
+                  onChange={(e) => updateVariable(v.id, { name: e.target.value })}
+                  style={{ padding: '5px 8px', background: t.bgInput, border: `1px solid ${t.borderMed}`, borderRadius: 6, color: t.textPrimary, fontSize: 12, fontFamily: 'monospace', outline: 'none' }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: 5 }}>
+                {(['text', 'number', 'boolean'] as const).map((tp) => (
+                  <button
+                    key={tp}
+                    onClick={() => updateVariable(v.id, { type: tp })}
+                    style={{
+                      flex: 1, padding: '4px 0', borderRadius: 6,
+                      border: `1.5px solid ${v.type === tp ? TYPE_COLORS[tp] : t.border}`,
+                      background: v.type === tp ? TYPE_COLORS[tp] + '22' : 'transparent',
+                      color: v.type === tp ? TYPE_COLORS[tp] : t.textDim,
+                      fontSize: 10, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                    }}
+                  >{tp}</button>
+                ))}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <span style={{ fontSize: 10, color: t.textDim }}>Default value</span>
+                {v.type === 'boolean' ? (
+                  <div style={{ display: 'flex', gap: 5 }}>
+                    {['true', 'false'].map((bv) => (
+                      <button
+                        key={bv}
+                        onClick={() => updateVariable(v.id, { defaultValue: bv })}
+                        style={{
+                          flex: 1, padding: '5px 0', borderRadius: 6,
+                          border: `1.5px solid ${v.defaultValue === bv ? '#f59e0b' : t.border}`,
+                          background: v.defaultValue === bv ? '#f59e0b22' : 'transparent',
+                          color: v.defaultValue === bv ? '#f59e0b' : t.textDim,
+                          fontSize: 11, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                        }}
+                      >{bv}</button>
+                    ))}
+                  </div>
+                ) : (
+                  <input
+                    type={v.type === 'number' ? 'number' : 'text'}
+                    value={v.defaultValue}
+                    onChange={(e) => updateVariable(v.id, { defaultValue: e.target.value })}
+                    placeholder={v.type === 'number' ? '0' : 'value…'}
+                    style={{ padding: '5px 8px', background: t.bgInput, border: `1px solid ${t.borderMed}`, borderRadius: 6, color: t.textPrimary, fontSize: 12, fontFamily: 'Inter, sans-serif', outline: 'none' }}
+                  />
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function Sidebar() {
   const t = useUITheme()
   const { openCustomElementModal } = useStore()
-  const [tab, setTab] = useState<'elements' | 'layers'>('elements')
+  const [tab, setTab] = useState<'elements' | 'layers' | 'vars' | 'data' | 'fx'>('elements')
+  const [density, setDensity] = useState<IconDensity>('normal')
+  const [width, setWidth] = useState(220)
+  const dragging = useRef(false)
 
-  const tabStyle = (active: boolean) => ({
-    flex: 1, padding: '6px 0', borderRadius: 7, border: 'none',
+  const startResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    dragging.current = true
+    const startX = e.clientX
+    const startW = width
+    const onMove = (ev: MouseEvent) => {
+      if (!dragging.current) return
+      setWidth(Math.max(160, Math.min(420, startW + ev.clientX - startX)))
+    }
+    const onUp = () => {
+      dragging.current = false
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }, [width])
+
+  const tabStyle = (active: boolean): React.CSSProperties => ({
+    flex: 1, padding: '5px 0', borderRadius: 7, border: 'none',
     background: active ? 'rgba(99,102,241,0.15)' : 'transparent',
     color: active ? '#a5b4fc' : t.textSecondary,
-    fontSize: 12, fontWeight: active ? 600 : 400,
+    fontSize: 10, fontWeight: active ? 600 : 400,
     cursor: 'pointer', fontFamily: 'Inter, sans-serif', transition: 'all 0.15s',
   })
 
   return (
     <div style={{
-      width: 220,
+      width, minWidth: width, maxWidth: width,
       borderRight: `1px solid ${t.border}`,
       background: t.bgSidebar,
+      display: 'flex', flexDirection: 'column',
+      position: 'relative', flexShrink: 0,
+    }}>
+    {/* Scrollable content */}
+    <div style={{
+      flex: 1, overflowY: 'auto', overflowX: 'hidden',
       padding: '12px 10px 16px',
-      overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12,
+      display: 'flex', flexDirection: 'column', gap: 12,
     }}>
       {/* Tab bar */}
-      <div style={{ display: 'flex', gap: 3, background: t.bgInput, borderRadius: 10, padding: 3 }}>
+      <div style={{ display: 'flex', gap: 2, background: t.bgInput, borderRadius: 10, padding: 3 }}>
         <button style={tabStyle(tab === 'elements')} onClick={() => setTab('elements')}>Elements</button>
         <button style={tabStyle(tab === 'layers')} onClick={() => setTab('layers')}>Layers</button>
+        <button style={tabStyle(tab === 'vars')} onClick={() => setTab('vars')}>Vars</button>
+        <button style={tabStyle(tab === 'data')} onClick={() => setTab('data')}>Data</button>
+        <button style={tabStyle(tab === 'fx')} onClick={() => setTab('fx')} title="Animations & effects">FX</button>
       </div>
 
       {tab === 'elements' && (
         <>
+          {/* Icon density toggle */}
+          <div style={{ display: 'flex', gap: 2, justifyContent: 'flex-end', marginBottom: -4 }}>
+            {([
+              { id: 'compact' as IconDensity, icon: '≡', title: 'Compact list' },
+              { id: 'normal'  as IconDensity, icon: '▤', title: 'Normal list' },
+              { id: 'large'   as IconDensity, icon: '▦', title: 'Large list' },
+            ]).map((opt) => (
+              <button
+                key={opt.id}
+                onClick={() => setDensity(opt.id)}
+                title={opt.title}
+                style={{
+                  width: 24, height: 24, borderRadius: 6, border: 'none',
+                  background: density === opt.id ? 'rgba(99,102,241,0.2)' : 'transparent',
+                  color: density === opt.id ? '#a5b4fc' : t.textDim,
+                  fontSize: 13, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                {opt.icon}
+              </button>
+            ))}
+          </div>
+
           {/* Custom element creator */}
           <button
             onClick={() => openCustomElementModal()}
@@ -312,9 +657,9 @@ export function Sidebar() {
                 <div style={{ fontSize: 11, color: t.textDim, marginBottom: 8, paddingLeft: 4 }}>
                   {category.label}
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: density === 'large' ? 6 : 4 }}>
                   {categoryPieces.map((piece) => (
-                    <PieceCard key={piece.type} piece={piece} />
+                    <PieceCard key={piece.type} piece={piece} density={density} />
                   ))}
                 </div>
               </div>
@@ -332,7 +677,45 @@ export function Sidebar() {
         </div>
       )}
 
-      <ScreensPanel />
+      {tab === 'vars' && (
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 11, color: t.textSecondary, textTransform: 'uppercase', letterSpacing: '0.08em', paddingLeft: 4, marginBottom: 10 }}>
+            Variables
+          </div>
+          <VariablesPanel />
+        </div>
+      )}
+
+      {tab === 'data' && (
+        <div style={{ flex: 1 }}>
+          <DatabasePanel />
+        </div>
+      )}
+
+      {tab === 'fx' && (
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 11, color: t.textSecondary, textTransform: 'uppercase', letterSpacing: '0.08em', paddingLeft: 4, marginBottom: 10 }}>
+            Animations &amp; Effects
+          </div>
+          <AnimationsPanel />
+        </div>
+      )}
+
+      {tab !== 'data' && tab !== 'fx' && <ScreensPanel />}
+    </div>{/* end scrollable content */}
+
+    {/* Drag-to-resize handle */}
+    <div
+      onMouseDown={startResize}
+      title="Drag to resize"
+      style={{
+        position: 'absolute', right: -2, top: 0, bottom: 0, width: 5,
+        cursor: 'ew-resize', zIndex: 30,
+        background: 'transparent', transition: 'background 0.15s',
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(99,102,241,0.35)')}
+      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+    />
     </div>
   )
 }

@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, createContext, useContext, useMemo, useCallback } from 'react'
 import { useStore, selectPreviewElements } from '../store/useStore'
 import { useUITheme } from '../hooks/useUITheme'
 import { ElementRenderer } from './ElementRenderer'
-import { DEVICE_SIZES } from '../data/devices'
+import { getDeviceSpec } from '../data/devices'
 import { aiInterpretAction, getApiKey } from '../utils/aiInterpretAction'
-import type { CanvasElement, ElementProps, ElementType, Flow } from '../types'
+import { createAppClient } from '../lib/supabase'
+import type { CanvasElement, ElementProps, ElementType, Flow, AppDatabase } from '../types'
 import { PIECES } from '../data/pieces'
 
 // ─── Colour vocabulary ───────────────────────────────────────────────────────
@@ -160,6 +161,141 @@ type Overrides = Record<string, ElementOverride>
 interface Toast { id: number; text: string }
 let toastId = 0
 
+// ─── Preview data context ─────────────────────────────────────────────────────
+interface PreviewDataCtxValue {
+  appClient: ReturnType<typeof createAppClient>
+  appDatabase: AppDatabase
+  formValues: Record<string, string>
+  setFormValue: (field: string, value: string) => void
+  submitForm: (tableName: string) => Promise<void>
+  updateRow: (tableName: string) => Promise<void>
+  deleteRow: (tableName: string) => Promise<void>
+  formStatus: 'idle' | 'submitting' | 'success' | 'error'
+  formMessage: string
+  addToast: (msg: string) => void
+  selectedRow: Record<string, unknown> | null
+  setSelectedRow: (row: Record<string, unknown> | null) => void
+  tableRefreshKeys: Record<string, number>
+  refreshTable: (tableName: string) => void
+}
+const PreviewDataContext = createContext<PreviewDataCtxValue>({
+  appClient: null,
+  appDatabase: { supabaseUrl: '', supabaseAnonKey: '', tables: [] },
+  formValues: {},
+  setFormValue: () => {},
+  submitForm: async () => {},
+  updateRow: async () => {},
+  deleteRow: async () => {},
+  formStatus: 'idle',
+  formMessage: '',
+  addToast: () => {},
+  selectedRow: null,
+  setSelectedRow: () => {},
+  tableRefreshKeys: {},
+  refreshTable: () => {},
+})
+
+// ─── Data-bound list ──────────────────────────────────────────────────────────
+function DataBoundList({ element }: { element: CanvasElement }) {
+  const { appClient, appDatabase, selectedRow, setSelectedRow, tableRefreshKeys } = useContext(PreviewDataContext)
+  const [rows, setRows] = useState<Record<string, unknown>[]>([])
+  const [loading, setLoading] = useState(true)
+  const props = element.props
+  const tableName = props.boundTable ?? ''
+  const tableDef = appDatabase.tables.find((t) => t.name === tableName)
+  const refreshKey = tableRefreshKeys[tableName] ?? 0
+
+  useEffect(() => {
+    if (!appClient || !tableName) { setLoading(false); return }
+    setLoading(true)
+    appClient.from(tableName).select('*').order('id', { ascending: false }).limit(50)
+      .then(({ data }) => {
+        setRows(data ?? [])
+        setLoading(false)
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appClient, tableName, refreshKey])
+
+  const displayField = props.boundDisplayField ?? tableDef?.fields[0]?.name ?? 'id'
+  const subField = props.boundSubField
+  const selectable = props.listSelectable
+
+  return (
+    <div style={{
+      width: '100%', height: '100%', overflowY: 'auto',
+      background: props.bgColor ?? 'transparent',
+      borderRadius: props.borderRadius ?? 0,
+    }}>
+      {loading && (
+        <div style={{ padding: 16, color: '#9ca3af', fontSize: 13, textAlign: 'center' }}>Loading…</div>
+      )}
+      {!loading && rows.length === 0 && (
+        <div style={{ padding: 16, color: '#9ca3af', fontSize: 13, textAlign: 'center' }}>No data yet</div>
+      )}
+      {rows.map((row, i) => {
+        const isSelected = selectable && selectedRow !== null && selectedRow.id === row.id
+        return (
+          <div
+            key={String(row.id ?? i)}
+            onClick={selectable ? () => setSelectedRow(isSelected ? null : row) : undefined}
+            style={{
+              padding: '10px 14px',
+              borderBottom: i < rows.length - 1 ? '1px solid rgba(0,0,0,0.07)' : 'none',
+              borderLeft: isSelected ? '3px solid #6366f1' : '3px solid transparent',
+              background: isSelected ? 'rgba(99,102,241,0.08)' : 'transparent',
+              display: 'flex', flexDirection: 'column', gap: 2,
+              cursor: selectable ? 'pointer' : 'default',
+              transition: 'background 0.12s',
+            }}
+          >
+            <div style={{ fontSize: props.fontSize ?? 14, color: props.textColor ?? '#1f2937', fontWeight: 500 }}>
+              {String(row[displayField] ?? '')}
+            </div>
+            {subField && row[subField] !== undefined && (
+              <div style={{ fontSize: (props.fontSize ?? 14) - 2, color: '#6b7280' }}>
+                {String(row[subField])}
+              </div>
+            )}
+            {isSelected && (
+              <div style={{ fontSize: 10, color: '#6366f1', marginTop: 2, fontWeight: 500 }}>● selected</div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── Data-bound input ─────────────────────────────────────────────────────────
+function DataBoundInput({ element }: { element: CanvasElement }) {
+  const { formValues, setFormValue } = useContext(PreviewDataContext)
+  const props = element.props
+  const field = props.inputField ?? ''
+  return (
+    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center' }}>
+      <input
+        type="text"
+        value={formValues[field] ?? ''}
+        onChange={(e) => setFormValue(field, e.target.value)}
+        placeholder={props.placeholder ?? props.label ?? field}
+        style={{
+          width: '100%',
+          height: '100%',
+          padding: '0 12px',
+          border: '1px solid #d1d5db',
+          borderRadius: props.borderRadius ?? 8,
+          background: props.bgColor ?? '#ffffff',
+          color: props.textColor ?? '#1f2937',
+          fontSize: props.fontSize ?? 15,
+          outline: 'none',
+          boxSizing: 'border-box',
+          fontFamily: 'Inter, sans-serif',
+        }}
+      />
+    </div>
+  )
+}
+
 interface GestureRef {
   startX: number
   startY: number
@@ -191,10 +327,10 @@ function PreviewElement({
   const animRef = useRef<HTMLDivElement>(null)
   const outerRef = useRef<HTMLDivElement>(null)
 
-  if (override.hidden) return null
+  if (override.hidden || element.hidden) return null
 
   const mergedProps: ElementProps = { ...element.props, ...override }
-  const display: CanvasElement = { ...element, props: mergedProps }
+  let display: CanvasElement = { ...element, props: mergedProps }
 
   // ── CSS animation (no re-render needed, direct DOM) ──────────────────────────
   function runAnimation(name: string, duration: number, repeat: number | 'infinite'): Promise<void> {
@@ -382,6 +518,33 @@ function PreviewElement({
           const star = Math.max(1, Math.min(5, Math.ceil((relX / rect.width) * 5)))
           onAction(element.id, { type: 'style', props: { value: star } as Partial<ElementProps> })
         }
+
+        if (element.type === 'stepper') {
+          const currentValue = mergedProps.value ?? 1
+          const minVal = mergedProps.min ?? 0
+          const maxVal = mergedProps.max ?? 99
+          // Left third = minus, right third = plus
+          if (relX < rect.width / 3) {
+            onAction(element.id, { type: 'style', props: { value: Math.max(minVal, currentValue - 1) } as Partial<ElementProps> })
+          } else if (relX > (rect.width * 2) / 3) {
+            onAction(element.id, { type: 'style', props: { value: Math.min(maxVal, currentValue + 1) } as Partial<ElementProps> })
+          }
+        }
+      }
+
+      if (element.type === 'dropdown') {
+        const items = (mergedProps.dropdownItems ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+        if (items.length > 0) {
+          const currentIdx = items.indexOf(mergedProps.selectedItem ?? '')
+          const nextIdx = (currentIdx + 1) % items.length
+          onAction(element.id, { type: 'style', props: { selectedItem: items[nextIdx] } as Partial<ElementProps> })
+        }
+      }
+      // Database actions for bound buttons
+      if (element.props.formTable) {
+        if (element.props.buttonAction === 'submit-form') ctx.submitForm(element.props.formTable)
+        else if (element.props.buttonAction === 'update-row') ctx.updateRow(element.props.formTable)
+        else if (element.props.buttonAction === 'delete-row') ctx.deleteRow(element.props.formTable)
       }
       fireFlows('tap')
     }
@@ -395,16 +558,48 @@ function PreviewElement({
   }
 
   // All elements with flows are interactive; some types are always interactive
-  const NATIVE_INTERACTIVE = new Set(['button', 'toggle', 'checkbox', 'slider', 'tabbar', 'rating'])
+  const NATIVE_INTERACTIVE = new Set(['button', 'toggle', 'checkbox', 'slider', 'tabbar', 'rating', 'stepper', 'dropdown'])
   const isInteractive = element.flows.length > 0 || NATIVE_INTERACTIVE.has(element.type)
+
+  // iframe-based elements (video, map) live in their own browsing context — the
+  // outer wrapper's pointer events never reach them, so we let them handle their
+  // own events instead of blocking them. Flows/animations are sacrificed, but
+  // that's the right trade-off for a functional embed.
+  const isIframeElement = element.type === 'video' || element.type === 'map'
+
+  // Data-bound elements need real pointer events so the user can type/interact
+  const ctx = useContext(PreviewDataContext)
+  const isDataInput = element.type === 'input' && !!element.props.inputField
+  const isDataList  = element.type === 'list'  && !!element.props.boundTable
+
+  // Inject bound-field value from selectedRow for display-bound elements
+  // (list handles its own rendering; input handles its own form binding)
+  if (!isDataList && !isDataInput && mergedProps.boundTable && mergedProps.boundDisplayField && ctx.selectedRow) {
+    const fieldValue = ctx.selectedRow[mergedProps.boundDisplayField]
+    if (fieldValue !== undefined) {
+      const valStr = String(fieldValue)
+      let injectedProps = { ...display.props }
+      if (element.type === 'image') {
+        injectedProps = { ...injectedProps, src: valStr }
+      } else if (element.type === 'badge') {
+        injectedProps = { ...injectedProps, label: valStr }
+      } else if (element.type === 'text' || element.type === 'heading') {
+        injectedProps = { ...injectedProps, text: valStr }
+      } else {
+        // generic: populate both text and label so whichever the element uses gets the value
+        injectedProps = { ...injectedProps, text: valStr, label: valStr }
+      }
+      display = { ...display, props: injectedProps }
+    }
+  }
 
   return (
     <div
       ref={outerRef}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerCancel}
+      onPointerDown={isIframeElement ? undefined : onPointerDown}
+      onPointerMove={isIframeElement ? undefined : onPointerMove}
+      onPointerUp={isIframeElement ? undefined : onPointerUp}
+      onPointerCancel={isIframeElement ? undefined : onPointerCancel}
       style={{
         position: 'absolute',
         left: override._x ?? element.x,
@@ -414,14 +609,23 @@ function PreviewElement({
         cursor: isInteractive ? (thinking ? 'wait' : 'pointer') : 'default',
         opacity: thinking ? 0.7 : 1,
         transition: 'opacity 0.15s',
-        touchAction: 'none',
+        touchAction: isIframeElement ? 'auto' : 'none',
         userSelect: 'none',
       }}
     >
       {/* pointerEvents:none lets ALL pointer events reach the outer wrapper unobstructed
-          (prevents inner <button>, <img>, etc. from stealing events in preview) */}
-      <div ref={animRef} style={{ width: '100%', height: '100%', pointerEvents: 'none' }}>
-        <ElementRenderer element={display} />
+          (prevents inner <button>, <img>, etc. from stealing events in preview).
+          iframe-based elements (video, map) are exempted — their controls live inside
+          the iframe's own document and require real pointer events to function.
+          Data-bound inputs are also exempted so the user can type into them. */}
+      <div ref={animRef} style={{ width: '100%', height: '100%', pointerEvents: (isIframeElement || isDataInput) ? 'auto' : 'none' }}>
+        {isDataList ? (
+          <DataBoundList element={display} />
+        ) : isDataInput ? (
+          <DataBoundInput element={display} />
+        ) : (
+          <ElementRenderer element={display} />
+        )}
       </div>
     </div>
   )
@@ -429,9 +633,9 @@ function PreviewElement({
 
 // ─── Preview overlay ──────────────────────────────────────────────────────────
 export function PreviewMode() {
-  const { device, setPreviewMode, screens, previewScreenId, setPreviewScreen } = useStore()
+  const { device, devicePreset, setPreviewMode, screens, previewScreenId, setPreviewScreen, appDatabase } = useStore()
   const elements = useStore(selectPreviewElements)
-  const size = DEVICE_SIZES[device]
+  const size = getDeviceSpec(devicePreset)
   const t = useUITheme()
 
   const [overrides, setOverrides] = useState<Overrides>({})
@@ -442,11 +646,114 @@ export function PreviewMode() {
   const sharedState = useRef<Record<string, unknown>>({})
   const intervalsRef = useRef<Set<ReturnType<typeof setInterval>>>(new Set())
 
+  // ── Form + data-binding state ─────────────────────────────────────────────────
+  const [formValues, setFormValuesState] = useState<Record<string, string>>({})
+  const [formStatus, setFormStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle')
+  const [formMessage, setFormMessage] = useState('')
+  const [selectedRow, setSelectedRow] = useState<Record<string, unknown> | null>(null)
+  const [tableRefreshKeys, setTableRefreshKeys] = useState<Record<string, number>>({})
+
+  const appClient = useMemo(
+    () => createAppClient(appDatabase.supabaseUrl, appDatabase.supabaseAnonKey),
+    [appDatabase.supabaseUrl, appDatabase.supabaseAnonKey],
+  )
+
+  // When a row is selected, pre-fill form inputs with its values
+  useEffect(() => {
+    if (selectedRow) {
+      const filled: Record<string, string> = {}
+      Object.entries(selectedRow).forEach(([k, v]) => {
+        if (v !== null && v !== undefined) filled[k] = String(v)
+      })
+      setFormValuesState(filled)
+    } else {
+      setFormValuesState({})
+    }
+  }, [selectedRow])
+
   function addToast(text: string) {
     const id = ++toastId
     setToasts((t) => [...t, { id, text }])
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3000)
   }
+
+  const refreshTable = useCallback((tableName: string) => {
+    setTableRefreshKeys((prev) => ({ ...prev, [tableName]: (prev[tableName] ?? 0) + 1 }))
+  }, [])
+
+  const setFormValue = useCallback((field: string, value: string) => {
+    setFormValuesState((prev) => ({ ...prev, [field]: value }))
+  }, [])
+
+  // ── Build typed payload from form values for a given table ────────────────────
+  function buildPayload(tableName: string): Record<string, unknown> | null {
+    const tableDef = appDatabase.tables.find((tbl) => tbl.name === tableName)
+    if (!tableDef) return null
+    const payload: Record<string, unknown> = {}
+    tableDef.fields.forEach((f) => {
+      const v = formValues[f.name]
+      if (v === undefined || v === '') return
+      payload[f.name] = f.type === 'number' ? Number(v) : f.type === 'boolean' ? v === 'true' : v
+    })
+    return payload
+  }
+
+  const submitForm = useCallback(async (tableName: string) => {
+    if (!appClient) { addToast('No database connection configured.'); return }
+    const payload = buildPayload(tableName)
+    if (!payload) { addToast('Table not found: ' + tableName); return }
+    setFormStatus('submitting')
+    const { error } = await appClient.from(tableName).insert(payload)
+    if (error) {
+      setFormStatus('error'); setFormMessage('Error: ' + error.message)
+      addToast('Insert failed: ' + error.message)
+    } else {
+      setFormStatus('success'); setFormMessage('Saved!')
+      addToast('✓ Row added!')
+      setFormValuesState({})
+      refreshTable(tableName)
+    }
+    setTimeout(() => { setFormStatus('idle'); setFormMessage('') }, 3000)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appClient, appDatabase.tables, formValues, refreshTable])
+
+  const updateRow = useCallback(async (tableName: string) => {
+    if (!appClient) { addToast('No database connection configured.'); return }
+    if (!selectedRow?.id) { addToast('No row selected — tap a list item first.'); return }
+    const payload = buildPayload(tableName)
+    if (!payload) { addToast('Table not found: ' + tableName); return }
+    setFormStatus('submitting')
+    const { error } = await appClient.from(tableName).update(payload).eq('id', selectedRow.id)
+    if (error) {
+      setFormStatus('error'); setFormMessage('Error: ' + error.message)
+      addToast('Update failed: ' + error.message)
+    } else {
+      setFormStatus('success'); setFormMessage('Updated!')
+      addToast('✓ Row updated!')
+      setSelectedRow(null)
+      refreshTable(tableName)
+    }
+    setTimeout(() => { setFormStatus('idle'); setFormMessage('') }, 3000)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appClient, appDatabase.tables, formValues, selectedRow, refreshTable])
+
+  const deleteRow = useCallback(async (tableName: string) => {
+    if (!appClient) { addToast('No database connection configured.'); return }
+    if (!selectedRow?.id) { addToast('No row selected — tap a list item first.'); return }
+    setFormStatus('submitting')
+    const { error } = await appClient.from(tableName).delete().eq('id', selectedRow.id)
+    if (error) {
+      setFormStatus('error'); setFormMessage('Error: ' + error.message)
+      addToast('Delete failed: ' + error.message)
+    } else {
+      setFormStatus('success'); setFormMessage('Deleted!')
+      addToast('✓ Row deleted!')
+      setSelectedRow(null)
+      refreshTable(tableName)
+    }
+    setTimeout(() => { setFormStatus('idle'); setFormMessage('') }, 3000)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appClient, selectedRow, refreshTable])
 
   function handleAction(elementId: string, action: PreviewAction) {
     switch (action.type) {
@@ -522,6 +829,8 @@ export function PreviewMode() {
   useEffect(() => {
     setDynamicElements([])
     setOverrides({})
+    setSelectedRow(null)
+    setTableRefreshKeys({})
     sharedState.current = {}
     for (const id of intervalsRef.current) clearInterval(id)
     intervalsRef.current.clear()
@@ -634,41 +943,66 @@ export function PreviewMode() {
           boxShadow: '0 40px 100px rgba(0,0,0,0.6)',
           overflow: 'hidden', position: 'relative',
         }}>
-          <div style={{ position: 'absolute', inset: 0, background: '#faf8f5' }}>
-            {elements.length === 0 ? (
-              <div style={{
-                position: 'absolute', inset: 0, display: 'flex',
-                alignItems: 'center', justifyContent: 'center',
-                color: '#c4bfba', fontSize: 14,
-              }}>
-                {currentScreen?.name} is empty
-              </div>
-            ) : (
-              <>
-                {elements.map((el) => (
-                  <PreviewElement
-                    key={el.id}
-                    element={el}
-                    overrides={overrides}
-                    onAction={handleAction}
-                    currentScreenId={previewScreenId}
-                    sharedState={sharedState}
-                    intervalsRef={intervalsRef}
-                  />
-                ))}
-                {dynamicElements.map((el) => (
-                  <PreviewElement
-                    key={el.id}
-                    element={el}
-                    overrides={overrides}
-                    onAction={handleAction}
-                    currentScreenId={previewScreenId}
-                    sharedState={sharedState}
-                    intervalsRef={intervalsRef}
-                  />
-                ))}
-              </>
+          <div style={{ position: 'absolute', inset: 0, background: currentScreen?.background ?? '#faf8f5' }}>
+            {/* Paint canvas layer sits below all elements */}
+            {currentScreen?.paintCanvas && (
+              <img
+                src={currentScreen.paintCanvas}
+                alt=""
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
+              />
             )}
+            <PreviewDataContext.Provider value={{
+              appClient,
+              appDatabase,
+              formValues,
+              setFormValue,
+              submitForm,
+              updateRow,
+              deleteRow,
+              formStatus,
+              formMessage,
+              addToast,
+              selectedRow,
+              setSelectedRow,
+              tableRefreshKeys,
+              refreshTable,
+            }}>
+              {elements.length === 0 ? (
+                <div style={{
+                  position: 'absolute', inset: 0, display: 'flex',
+                  alignItems: 'center', justifyContent: 'center',
+                  color: '#c4bfba', fontSize: 14,
+                }}>
+                  {currentScreen?.name} is empty
+                </div>
+              ) : (
+                <>
+                  {elements.map((el) => (
+                    <PreviewElement
+                      key={el.id}
+                      element={el}
+                      overrides={overrides}
+                      onAction={handleAction}
+                      currentScreenId={previewScreenId}
+                      sharedState={sharedState}
+                      intervalsRef={intervalsRef}
+                    />
+                  ))}
+                  {dynamicElements.map((el) => (
+                    <PreviewElement
+                      key={el.id}
+                      element={el}
+                      overrides={overrides}
+                      onAction={handleAction}
+                      currentScreenId={previewScreenId}
+                      sharedState={sharedState}
+                      intervalsRef={intervalsRef}
+                    />
+                  ))}
+                </>
+              )}
+            </PreviewDataContext.Provider>
           </div>
 
           {/* Toasts */}

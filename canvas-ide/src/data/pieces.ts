@@ -174,13 +174,91 @@ export const PIECES: PieceDef[] = [
     defaultHeight: 64,
     defaultProps: { tabs: 'Home,Explore,Profile', activeTab: 0 },
   },
+
+  // ── New: Icons & Media ────────────────────────────────────────────────────
+  {
+    type: 'icon',
+    label: 'Icon',
+    icon: '◆',
+    description: 'Scalable vector icon',
+    defaultWidth: 40,
+    defaultHeight: 40,
+    defaultProps: { iconName: 'star', bgColor: '#6366f1' },
+  },
+  {
+    type: 'video',
+    label: 'Video',
+    icon: '▶',
+    description: 'Video player placeholder',
+    defaultWidth: 280,
+    defaultHeight: 160,
+    defaultProps: { label: 'Video title', borderRadius: 12 },
+  },
+  {
+    type: 'map',
+    label: 'Map',
+    icon: '📍',
+    description: 'Interactive map view',
+    defaultWidth: 280,
+    defaultHeight: 200,
+    defaultProps: { mapLocation: 'New York', mapZoom: 13, borderRadius: 12 },
+  },
+
+  // ── New: Input variants ───────────────────────────────────────────────────
+  {
+    type: 'dropdown',
+    label: 'Dropdown',
+    icon: '▽',
+    description: 'Select from a list',
+    defaultWidth: 220,
+    defaultHeight: 48,
+    defaultProps: { placeholder: 'Select an option…', dropdownItems: 'Option 1,Option 2,Option 3', borderRadius: 10 },
+  },
+  {
+    type: 'stepper',
+    label: 'Stepper',
+    icon: '⊕',
+    description: 'Number input with +/− buttons',
+    defaultWidth: 200,
+    defaultHeight: 48,
+    defaultProps: { label: 'Quantity', value: 1, min: 0, max: 99, stepperStep: 1 },
+  },
+
+  // ── New: Data ─────────────────────────────────────────────────────────────
+  {
+    type: 'chart',
+    label: 'Chart',
+    icon: '📊',
+    description: 'Bar, line or pie chart',
+    defaultWidth: 280,
+    defaultHeight: 200,
+    defaultProps: {
+      chartType: 'bar',
+      chartData: '40,65,55,80,35',
+      chartLabels: 'Mon,Tue,Wed,Thu,Fri',
+      label: 'Weekly Stats',
+    },
+  },
+
+  // ── Drawing ───────────────────────────────────────────────────────────────
+  {
+    type: 'draw',
+    label: 'Drawing',
+    icon: '✏',
+    description: 'Freehand pen stroke',
+    defaultWidth: 200,
+    defaultHeight: 100,
+    defaultProps: { strokeColor: '#6366f1', strokeWidth: 3, pathData: 'M10,50 Q60,10 100,50 Q140,90 190,50' },
+  },
 ]
 
 export const PIECE_CATEGORIES = [
-  { label: 'Buttons & Controls', types: ['button', 'toggle', 'checkbox', 'slider'] },
+  { label: 'Buttons & Controls', types: ['button', 'toggle', 'checkbox', 'slider', 'stepper'] },
   { label: 'Text & Labels',      types: ['heading', 'text', 'badge', 'rating'] },
-  { label: 'Media',              types: ['image', 'avatar'] },
-  { label: 'Input',              types: ['input', 'searchbar'] },
-  { label: 'Feedback',           types: ['alert', 'progress'] },
-  { label: 'Layout & Nav',       types: ['card', 'list', 'divider', 'tabbar'] },
+  { label: 'Media',              types: ['image', 'avatar', 'icon', 'video', 'map'] },
+  { label: 'Input',              types: ['input', 'searchbar', 'dropdown'] },
+  { label: 'Data',               types: ['chart', 'progress', 'list'] },
+  { label: 'Feedback',           types: ['alert'] },
+  { label: 'Layout & Nav',       types: ['card', 'divider', 'tabbar'] },
+  { label: 'Drawing',            types: ['draw'] },
 ]

@@ -1,8 +1,10 @@
-import { useState } from 'react'
-import { useStore, selectElements } from '../store/useStore'
+import { useState, useRef, useCallback } from 'react'
+import { useStore, selectSelectedElement } from '../store/useStore'
+import type { DataTable } from '../types'
 import { useUITheme } from '../hooks/useUITheme'
-import type { AlignType } from '../types'
+import type { AlignType, CanvasElement, AppStyles } from '../types'
 import type { UITheme } from '../themes'
+import { ICON_NAMES } from './ElementRenderer'
 
 const RADIUS_MAP = { sharp: 4, medium: 10, soft: 20 }
 
@@ -64,23 +66,123 @@ const ALIGN_BUTTONS: { icon: string; title: string; align: AlignType }[] = [
 ]
 
 // Elements where per-element border-radius makes sense
-const HAS_RADIUS = new Set(['button', 'card', 'image', 'input', 'alert', 'searchbar', 'avatar', 'badge', 'progress'])
+const HAS_RADIUS = new Set(['button', 'card', 'image', 'input', 'alert', 'searchbar', 'avatar', 'badge', 'progress', 'dropdown', 'video', 'map'])
+
+// ── Inspect mode code generators ────────────────────────────────────────────
+function generateCSS(el: CanvasElement, appStyles: AppStyles): string {
+  const p = el.props
+  const rMap = { sharp: 4, medium: 10, soft: 20 }
+  const gr = rMap[appStyles.borderRadius]
+  const lines = [
+    `  position: absolute;`,
+    `  left: ${Math.round(el.x)}px;`,
+    `  top: ${Math.round(el.y)}px;`,
+    `  width: ${Math.round(el.width)}px;`,
+    `  height: ${Math.round(el.height)}px;`,
+  ]
+  if (p.bgColor) lines.push(`  background-color: ${p.bgColor};`)
+  if (p.textColor) lines.push(`  color: ${p.textColor};`)
+  if (p.fontSize) lines.push(`  font-size: ${p.fontSize}px;`)
+  if (p.fontWeight) lines.push(`  font-weight: ${p.fontWeight};`)
+  if (p.fontFamily) lines.push(`  font-family: ${p.fontFamily};`)
+  if (p.textAlign) lines.push(`  text-align: ${p.textAlign};`)
+  if (p.opacity !== undefined && p.opacity !== 1) lines.push(`  opacity: ${p.opacity};`)
+  if (p.padding) lines.push(`  padding: ${p.padding}px;`)
+  if (p.shadow) lines.push(`  box-shadow: 0 4px 24px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06);`)
+  const br = p.borderRadius ?? gr
+  if (HAS_RADIUS.has(el.type)) lines.push(`  border-radius: ${br}px;`)
+  return `.${el.type} {\n${lines.join('\n')}\n}`
+}
+
+function generateRN(el: CanvasElement, appStyles: AppStyles): string {
+  const p = el.props
+  const rMap = { sharp: 4, medium: 10, soft: 20 }
+  const gr = rMap[appStyles.borderRadius]
+  const lines = [
+    `    position: 'absolute',`,
+    `    left: ${Math.round(el.x)},`,
+    `    top: ${Math.round(el.y)},`,
+    `    width: ${Math.round(el.width)},`,
+    `    height: ${Math.round(el.height)},`,
+  ]
+  if (p.bgColor) lines.push(`    backgroundColor: '${p.bgColor}',`)
+  if (p.textColor) lines.push(`    color: '${p.textColor}',`)
+  if (p.fontSize) lines.push(`    fontSize: ${p.fontSize},`)
+  if (p.fontWeight) lines.push(`    fontWeight: '${p.fontWeight}',`)
+  if (p.fontFamily) lines.push(`    fontFamily: '${p.fontFamily}',`)
+  if (p.textAlign) lines.push(`    textAlign: '${p.textAlign}',`)
+  if (p.opacity !== undefined && p.opacity !== 1) lines.push(`    opacity: ${p.opacity},`)
+  if (p.padding) lines.push(`    padding: ${p.padding},`)
+  if (p.shadow) lines.push(`    shadowColor: '#000',\n    shadowOffset: { width: 0, height: 2 },\n    shadowOpacity: 0.10,\n    shadowRadius: 8,\n    elevation: 4,`)
+  const br = p.borderRadius ?? gr
+  if (HAS_RADIUS.has(el.type)) lines.push(`    borderRadius: ${br},`)
+  return `StyleSheet.create({\n  ${el.type}: {\n${lines.join('\n')}\n  },\n})`
+}
 
 export function PropertiesPanel() {
-  const { selectedId, updateElement, updateElementProps, openFlowModal, openCustomElementModal,
+  const { updateElement, updateElementProps, openFlowModal, openCustomElementModal,
           removeElement, duplicateElement, copyElement, pasteElement, alignElement, removeFlow,
-          styles, clipboard } = useStore()
-  const elements = useStore(selectElements)
-  const selected = elements.find((e) => e.id === selectedId)
+          styles, clipboard, appDatabase } = useStore()
+  const selected = useStore(selectSelectedElement)
   const globalRadius = RADIUS_MAP[styles.borderRadius]
   const t = useUITheme()
+  const [inspectMode, setInspectMode] = useState(false)
+  const [copied, setCopied] = useState<'css' | 'rn' | null>(null)
+  const [width, setWidth] = useState(260)
+  const dragging = useRef(false)
+
+  const startResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    dragging.current = true
+    const startX = e.clientX
+    const startW = width
+    const onMove = (ev: MouseEvent) => {
+      if (!dragging.current) return
+      // dragging left = increasing width
+      setWidth(Math.max(200, Math.min(480, startW - (ev.clientX - startX))))
+    }
+    const onUp = () => {
+      dragging.current = false
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }, [width])
+
+  function copyCode(text: string, kind: 'css' | 'rn') {
+    navigator.clipboard.writeText(text).catch(() => undefined)
+    setCopied(kind)
+    setTimeout(() => setCopied(null), 1500)
+  }
+
+  const panelShell = (children: React.ReactNode) => (
+    <div style={{
+      width, minWidth: width, maxWidth: width,
+      borderLeft: `1px solid ${t.border}`,
+      background: t.bgPanel,
+      display: 'flex', flexDirection: 'column',
+      position: 'relative', flexShrink: 0,
+    }}>
+      {/* Drag-to-resize handle on left edge */}
+      <div
+        onMouseDown={startResize}
+        title="Drag to resize"
+        style={{
+          position: 'absolute', left: -2, top: 0, bottom: 0, width: 5,
+          cursor: 'ew-resize', zIndex: 30, background: 'transparent', transition: 'background 0.15s',
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(99,102,241,0.35)')}
+        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+      />
+      {children}
+    </div>
+  )
 
   if (!selected) {
-    return (
+    return panelShell(
       <div style={{
-        width: 240, borderLeft: `1px solid ${t.border}`,
-        background: t.bgPanel,
-        padding: 24, display: 'flex', flexDirection: 'column',
+        flex: 1, padding: 24, display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center', gap: 10, color: t.textDim,
       }}>
         <div style={{ fontSize: 28 }}>←</div>
@@ -106,17 +208,67 @@ export function PropertiesPanel() {
 
   const { type, props, flows } = selected
 
-  return (
+  return panelShell(
     <div style={{
-      width: 240, borderLeft: `1px solid ${t.border}`,
-      background: t.bgPanel,
-      padding: 20, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4,
+      flex: 1, overflowY: 'auto', overflowX: 'hidden',
+      padding: 20, display: 'flex', flexDirection: 'column', gap: 4,
     }}>
       {/* Header */}
-      <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 11, color: t.textSecondary, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Selected</div>
-        <div style={{ fontSize: 16, fontWeight: 600, color: t.textPrimary, textTransform: 'capitalize' }}>{type}</div>
+      <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 11, color: t.textSecondary, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>Selected</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: t.textPrimary, textTransform: 'capitalize' }}>{type}</div>
+        </div>
+        <button
+          onClick={() => setInspectMode(!inspectMode)}
+          title={inspectMode ? 'Back to design' : 'Inspect code'}
+          style={{
+            padding: '4px 9px', borderRadius: 7, border: `1px solid ${inspectMode ? '#6366f1' : t.border}`,
+            background: inspectMode ? 'rgba(99,102,241,0.15)' : 'transparent',
+            color: inspectMode ? '#a5b4fc' : t.textDim,
+            fontSize: 11, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+          }}
+        >
+          {inspectMode ? '← Design' : '</> Code'}
+        </button>
       </div>
+
+      {/* ── Inspect mode ────────────────────────────────────────────────────── */}
+      {inspectMode && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {[
+            { label: 'CSS', code: generateCSS(selected, styles), kind: 'css' as const },
+            { label: 'React Native', code: generateRN(selected, styles), kind: 'rn' as const },
+          ].map(({ label, code, kind }) => (
+            <div key={kind}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: t.textSecondary }}>{label}</span>
+                <button
+                  onClick={() => copyCode(code, kind)}
+                  style={{
+                    padding: '2px 8px', borderRadius: 5, border: `1px solid ${t.border}`,
+                    background: copied === kind ? 'rgba(16,185,129,0.15)' : 'transparent',
+                    color: copied === kind ? '#10b981' : t.textDim,
+                    fontSize: 10, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                  }}
+                >
+                  {copied === kind ? '✓ Copied' : 'Copy'}
+                </button>
+              </div>
+              <pre style={{
+                background: t.bgInput, borderRadius: 8, padding: '10px 12px',
+                fontSize: 10, lineHeight: 1.6, color: t.textSecondary,
+                overflowX: 'auto', margin: 0, fontFamily: 'monospace',
+                border: `1px solid ${t.border}`, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+              }}>
+                {code}
+              </pre>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!inspectMode && <>
 
       {/* ── Position & Size ─────────────────────────────────────────────────── */}
       <div style={{ borderTop: `1px solid ${t.border}`, paddingTop: 14, marginBottom: 8 }}>
@@ -202,8 +354,74 @@ export function PropertiesPanel() {
 
         {type === 'image' && (
           <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 6 }}>Image URL</div>
-            <input value={props.src ?? ''} onChange={(e) => updateElementProps(selected.id, { src: e.target.value })} placeholder="Paste a URL…" style={inputStyle(t)} />
+            <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 6 }}>Image</div>
+
+            {/* Upload from device */}
+            <label style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              width: '100%', padding: '8px 0', marginBottom: 8, borderRadius: 8, cursor: 'pointer',
+              border: `1.5px dashed ${t.borderStrong}`,
+              background: 'transparent', color: t.textSecondary, fontSize: 12,
+              fontFamily: 'Inter, sans-serif', transition: 'border-color 0.15s',
+            }}
+              onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#6366f1')}
+              onMouseLeave={(e) => (e.currentTarget.style.borderColor = t.borderStrong)}
+            >
+              📁 Upload from device
+              <input
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const reader = new FileReader()
+                  reader.onload = (ev) => {
+                    const dataUrl = ev.target?.result as string
+                    if (dataUrl) updateElementProps(selected.id, { src: dataUrl })
+                  }
+                  reader.readAsDataURL(file)
+                  e.target.value = ''
+                }}
+              />
+            </label>
+
+            {/* Preview thumbnail */}
+            {props.src && (
+              <div style={{
+                marginBottom: 8, borderRadius: 8, overflow: 'hidden',
+                border: `1px solid ${t.border}`, height: 80,
+                background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <img
+                  src={props.src}
+                  alt="preview"
+                  style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                />
+              </div>
+            )}
+
+            {/* URL fallback */}
+            <div style={{ fontSize: 11, color: t.textDim, marginBottom: 4 }}>Or paste a URL</div>
+            <input
+              value={props.src?.startsWith('data:') ? '' : (props.src ?? '')}
+              onChange={(e) => updateElementProps(selected.id, { src: e.target.value })}
+              placeholder="https://…"
+              style={inputStyle(t)}
+            />
+            {props.src && (
+              <button
+                onClick={() => updateElementProps(selected.id, { src: '' })}
+                style={{
+                  marginTop: 6, width: '100%', padding: '5px', borderRadius: 7,
+                  border: '1px solid rgba(239,68,68,0.2)', background: 'transparent',
+                  color: '#f87171', fontSize: 11, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                }}
+              >
+                ✕ Remove image
+              </button>
+            )}
           </div>
         )}
 
@@ -255,6 +473,318 @@ export function PropertiesPanel() {
             <SliderRow label="Active tab" value={props.activeTab ?? 0} min={0} max={Math.max(0, (props.tabs ?? 'Home,Explore,Profile').split(',').length - 1)} onChange={(v) => updateElementProps(selected.id, { activeTab: v })} t={t} />
           </>
         )}
+
+        {/* ── Icon ── */}
+        {type === 'icon' && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 8 }}>Icon</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {ICON_NAMES.slice(0, 24).map((name) => (
+                <button
+                  key={name}
+                  title={name}
+                  onClick={() => updateElementProps(selected.id, { iconName: name })}
+                  style={{
+                    width: 30, height: 30, borderRadius: 7,
+                    border: `1.5px solid ${props.iconName === name ? '#6366f1' : t.border}`,
+                    background: props.iconName === name ? 'rgba(99,102,241,0.15)' : t.bgInput,
+                    cursor: 'pointer', fontSize: 9, color: t.textDim,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    overflow: 'hidden',
+                  }}
+                >
+                  {name.slice(0, 3)}
+                </button>
+              ))}
+            </div>
+            <input
+              value={props.iconName ?? ''}
+              onChange={(e) => updateElementProps(selected.id, { iconName: e.target.value })}
+              placeholder="icon name (e.g. star, home, user)"
+              style={{ ...inputStyle(t), marginTop: 6 }}
+            />
+          </div>
+        )}
+
+        {/* ── Dropdown ── */}
+        {type === 'dropdown' && (
+          <>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 6 }}>Placeholder</div>
+              <input value={props.placeholder ?? ''} onChange={(e) => updateElementProps(selected.id, { placeholder: e.target.value })} style={inputStyle(t)} />
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 6 }}>Options (comma-separated)</div>
+              <textarea
+                value={props.dropdownItems ?? ''}
+                onChange={(e) => updateElementProps(selected.id, { dropdownItems: e.target.value })}
+                rows={3}
+                placeholder="Option 1,Option 2,Option 3"
+                style={{ ...inputStyle(t), resize: 'none', lineHeight: 1.5 }}
+              />
+            </div>
+          </>
+        )}
+
+        {/* ── Video ── */}
+        {type === 'video' && (
+          <>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 6 }}>Title (shown when no URL)</div>
+              <input value={props.label ?? ''} onChange={(e) => updateElementProps(selected.id, { label: e.target.value })} style={inputStyle(t)} />
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 4 }}>Video URL</div>
+              <div style={{ fontSize: 11, color: t.textDim, marginBottom: 6, lineHeight: 1.4 }}>
+                Paste a YouTube, Vimeo, or direct .mp4 link
+              </div>
+              <input value={props.videoUrl ?? ''} onChange={(e) => updateElementProps(selected.id, { videoUrl: e.target.value })} placeholder="https://youtube.com/watch?v=…" style={inputStyle(t)} />
+            </div>
+          </>
+        )}
+
+        {/* ── Map ── */}
+        {type === 'map' && (
+          <>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 4 }}>Location</div>
+              <div style={{ fontSize: 11, color: t.textDim, marginBottom: 6 }}>
+                Type a city, address, or landmark
+              </div>
+              <input
+                value={props.mapLocation ?? ''}
+                onChange={(e) => updateElementProps(selected.id, { mapLocation: e.target.value })}
+                placeholder="e.g. New York, Eiffel Tower"
+                style={inputStyle(t)}
+              />
+            </div>
+            <SliderRow
+              label="Zoom"
+              value={props.mapZoom ?? 13}
+              min={1} max={20}
+              onChange={(v) => updateElementProps(selected.id, { mapZoom: v })}
+              t={t}
+            />
+          </>
+        )}
+
+        {/* ── Card content ── */}
+        {type === 'card' && (
+          <>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 6 }}>Title (optional)</div>
+              <input value={props.label ?? ''} onChange={(e) => updateElementProps(selected.id, { label: e.target.value })} placeholder="Card title…" style={inputStyle(t)} />
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 6 }}>Subtitle (optional)</div>
+              <input value={props.text ?? ''} onChange={(e) => updateElementProps(selected.id, { text: e.target.value })} placeholder="Card subtitle…" style={inputStyle(t)} />
+            </div>
+          </>
+        )}
+
+        {/* ── Draw ── */}
+        {type === 'draw' && (
+          <>
+            <ColorRow label="Stroke" value={props.strokeColor} onChange={(v) => updateElementProps(selected.id, { strokeColor: v })} t={t} />
+            <SliderRow label="Stroke width" value={props.strokeWidth ?? 3} min={1} max={40} onChange={(v) => updateElementProps(selected.id, { strokeWidth: v })} t={t} />
+
+            {/* Line cap */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 7 }}>Line cap</div>
+              <div style={{ display: 'flex', gap: 5 }}>
+                {(['round', 'square', 'butt'] as const).map((cap) => (
+                  <button
+                    key={cap}
+                    onClick={() => updateElementProps(selected.id, { strokeLinecap: cap })}
+                    style={{
+                      flex: 1, padding: '5px 0', borderRadius: 6, border: '1.5px solid',
+                      borderColor: (props.strokeLinecap ?? 'round') === cap ? '#6366f1' : t.borderStrong,
+                      background: (props.strokeLinecap ?? 'round') === cap ? 'rgba(99,102,241,0.15)' : 'transparent',
+                      color: (props.strokeLinecap ?? 'round') === cap ? t.accentText : t.textSecondary,
+                      fontSize: 11, cursor: 'pointer', fontFamily: 'Inter, sans-serif', textTransform: 'capitalize',
+                    }}
+                  >{cap}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Fill color */}
+            <ColorRow label="Fill" value={props.fillColor ?? ''} onChange={(v) => updateElementProps(selected.id, { fillColor: v })} t={t} />
+
+            {/* Fill gradient */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span style={{ fontSize: 12, color: t.textSecondary }}>Fill gradient</span>
+                <button
+                  onClick={() => {
+                    if (props.fillGradient) {
+                      updateElementProps(selected.id, { fillGradient: undefined })
+                    } else {
+                      updateElementProps(selected.id, { fillGradient: { color2: '#ec4899', angle: 135 } })
+                    }
+                  }}
+                  style={{
+                    padding: '3px 9px', borderRadius: 6,
+                    border: `1px solid ${props.fillGradient ? '#6366f1' : t.border}`,
+                    background: props.fillGradient ? 'rgba(99,102,241,0.15)' : 'transparent',
+                    color: props.fillGradient ? '#a5b4fc' : t.textDim,
+                    fontSize: 11, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                  }}
+                >
+                  {props.fillGradient ? '✓ On' : 'Off'}
+                </button>
+              </div>
+              {props.fillGradient && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{
+                    height: 22, borderRadius: 6, border: `1px solid ${t.border}`,
+                    background: `linear-gradient(${props.fillGradient.angle}deg, ${props.fillColor ?? '#6366f1'}, ${props.fillGradient.color2})`,
+                  }} />
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 10, color: t.textDim, marginBottom: 4 }}>From (fill color)</div>
+                      <div style={{ position: 'relative', height: 28 }}>
+                        <div style={{ width: '100%', height: 28, borderRadius: 6, background: props.fillColor ?? '#6366f1', border: `1px solid ${t.border}` }} />
+                        <input type="color" value={props.fillColor ?? '#6366f1'}
+                          onChange={(e) => updateElementProps(selected.id, { fillColor: e.target.value })}
+                          style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }} />
+                      </div>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 10, color: t.textDim, marginBottom: 4 }}>To</div>
+                      <div style={{ position: 'relative', height: 28 }}>
+                        <div style={{ width: '100%', height: 28, borderRadius: 6, background: props.fillGradient.color2, border: `1px solid ${t.border}` }} />
+                        <input type="color" value={props.fillGradient.color2}
+                          onChange={(e) => updateElementProps(selected.id, { fillGradient: { ...props.fillGradient!, color2: e.target.value } })}
+                          style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }} />
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, color: t.textDim, marginBottom: 5 }}>Direction</div>
+                    <div style={{ display: 'flex', gap: 3 }}>
+                      {[
+                        { label: '↑', angle: 0 }, { label: '↗', angle: 45 },
+                        { label: '→', angle: 90 }, { label: '↘', angle: 135 },
+                        { label: '↓', angle: 180 }, { label: '↙', angle: 225 },
+                        { label: '←', angle: 270 }, { label: '↖', angle: 315 },
+                      ].map(({ label, angle }) => {
+                        const active = (props.fillGradient?.angle ?? 135) === angle
+                        return (
+                          <button key={angle} onClick={() => updateElementProps(selected.id, { fillGradient: { ...props.fillGradient!, angle } })}
+                            style={{
+                              flex: 1, height: 26, borderRadius: 5, fontSize: 11,
+                              border: `1.5px solid ${active ? '#6366f1' : t.border}`,
+                              background: active ? 'rgba(99,102,241,0.15)' : 'transparent',
+                              color: active ? '#a5b4fc' : t.textSecondary, cursor: 'pointer',
+                            }}>{label}</button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Blend mode */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 6 }}>Blend mode</div>
+              <select
+                value={props.blendMode ?? 'normal'}
+                onChange={(e) => updateElementProps(selected.id, { blendMode: e.target.value })}
+                style={{
+                  width: '100%', padding: '7px 10px', borderRadius: 7,
+                  border: `1.5px solid ${t.borderMed}`, background: t.bgInput,
+                  color: t.textPrimary, fontSize: 12, fontFamily: 'Inter, sans-serif',
+                  outline: 'none', cursor: 'pointer',
+                }}
+              >
+                {['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten',
+                  'color-dodge', 'color-burn', 'hard-light', 'soft-light', 'difference',
+                  'exclusion', 'hue', 'saturation', 'color', 'luminosity'].map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Glow radius */}
+            <SliderRow label="Glow radius" value={props.glowRadius ?? 0} min={0} max={40} onChange={(v) => updateElementProps(selected.id, { glowRadius: v })} t={t} />
+
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 6 }}>Path data (SVG)</div>
+              <textarea
+                value={props.pathData ?? ''}
+                onChange={(e) => updateElementProps(selected.id, { pathData: e.target.value })}
+                rows={3}
+                placeholder="M0,0 L50,50…"
+                style={{ ...inputStyle(t), resize: 'none', lineHeight: 1.4, fontSize: 11, fontFamily: 'monospace' }}
+              />
+            </div>
+          </>
+        )}
+
+        {/* ── Chart ── */}
+        {type === 'chart' && (
+          <>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 8 }}>Chart type</div>
+              <div style={{ display: 'flex', gap: 5 }}>
+                {(['bar', 'line', 'pie'] as const).map((ct) => (
+                  <button
+                    key={ct}
+                    onClick={() => updateElementProps(selected.id, { chartType: ct })}
+                    style={{
+                      flex: 1, padding: '6px 0', borderRadius: 7, border: '1.5px solid',
+                      borderColor: props.chartType === ct ? '#6366f1' : t.borderStrong,
+                      background: props.chartType === ct ? 'rgba(99,102,241,0.15)' : 'transparent',
+                      color: props.chartType === ct ? t.accentText : t.textSecondary,
+                      fontSize: 11, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                    }}
+                  >{ct}</button>
+                ))}
+              </div>
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 6 }}>Title</div>
+              <input value={props.label ?? ''} onChange={(e) => updateElementProps(selected.id, { label: e.target.value })} style={inputStyle(t)} />
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 6 }}>Data (comma-separated numbers)</div>
+              <input value={props.chartData ?? ''} onChange={(e) => updateElementProps(selected.id, { chartData: e.target.value })} placeholder="40,65,55,80,35" style={inputStyle(t)} />
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 6 }}>Labels (comma-separated)</div>
+              <input value={props.chartLabels ?? ''} onChange={(e) => updateElementProps(selected.id, { chartLabels: e.target.value })} placeholder="Mon,Tue,Wed,Thu,Fri" style={inputStyle(t)} />
+            </div>
+          </>
+        )}
+
+        {/* ── Stepper ── */}
+        {type === 'stepper' && (
+          <>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 6 }}>Label</div>
+              <input value={props.label ?? ''} onChange={(e) => updateElementProps(selected.id, { label: e.target.value })} style={inputStyle(t)} />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 14 }}>
+              {([
+                { label: 'Min', field: 'min' as const, val: props.min ?? 0 },
+                { label: 'Value', field: 'value' as const, val: props.value ?? 1 },
+                { label: 'Max', field: 'max' as const, val: props.max ?? 99 },
+              ]).map(({ label, field, val }) => (
+                <div key={field} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <span style={{ fontSize: 10, color: t.textDim }}>{label}</span>
+                  <input
+                    type="number"
+                    value={val}
+                    onChange={(e) => updateElementProps(selected.id, { [field]: Number(e.target.value) })}
+                    style={{ ...inputStyle(t), padding: '5px 8px', fontSize: 12 }}
+                  />
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {/* ── Style ──────────────────────────────────────────────────────────── */}
@@ -286,6 +816,24 @@ export function PropertiesPanel() {
             </div>
             <ColorRow label="BG color" value={props.bgColor} onChange={(v) => updateElementProps(selected.id, { bgColor: v })} t={t} />
             <ColorRow label="Text color" value={props.textColor} onChange={(v) => updateElementProps(selected.id, { textColor: v })} t={t} />
+            <SliderRow label="Font size" value={props.fontSize ?? 15} min={10} max={32} onChange={(v) => updateElementProps(selected.id, { fontSize: v })} t={t} />
+            {/* Shadow toggle for button */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <span style={{ fontSize: 12, color: t.textSecondary, flex: 1 }}>Shadow</span>
+              <button
+                onClick={() => updateElementProps(selected.id, { shadow: !props.shadow })}
+                style={{
+                  width: 36, height: 20, borderRadius: 10,
+                  background: props.shadow ? '#6366f1' : t.borderStrong,
+                  border: 'none', cursor: 'pointer', position: 'relative', transition: 'background 0.2s',
+                }}
+              >
+                <div style={{
+                  position: 'absolute', top: 2, left: props.shadow ? 18 : 2,
+                  width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 0.2s',
+                }} />
+              </button>
+            </div>
           </>
         )}
 
@@ -314,13 +862,36 @@ export function PropertiesPanel() {
         )}
 
         {/* Color rows for various types */}
-        {type === 'card' && <ColorRow label="Background" value={props.bgColor} onChange={(v) => updateElementProps(selected.id, { bgColor: v })} t={t} />}
+        {type === 'card' && (
+          <>
+            <ColorRow label="Background" value={props.bgColor} onChange={(v) => updateElementProps(selected.id, { bgColor: v })} t={t} />
+            <ColorRow label="Text color" value={props.textColor} onChange={(v) => updateElementProps(selected.id, { textColor: v })} t={t} />
+          </>
+        )}
         {type === 'badge' && <ColorRow label="Color" value={props.badgeColor} onChange={(v) => updateElementProps(selected.id, { badgeColor: v })} t={t} />}
         {type === 'rating' && <ColorRow label="Star color" value={props.badgeColor} onChange={(v) => updateElementProps(selected.id, { badgeColor: v })} t={t} />}
         {(type === 'slider' || type === 'progress' || type === 'avatar' || type === 'checkbox' || type === 'tabbar') && (
           <ColorRow label="Color" value={props.bgColor} onChange={(v) => updateElementProps(selected.id, { bgColor: v })} t={t} />
         )}
         {type === 'divider' && <ColorRow label="Line color" value={props.bgColor} onChange={(v) => updateElementProps(selected.id, { bgColor: v })} t={t} />}
+
+        {/* Input colors */}
+        {type === 'input' && (
+          <>
+            <ColorRow label="Background" value={props.bgColor} onChange={(v) => updateElementProps(selected.id, { bgColor: v })} t={t} />
+            <ColorRow label="Text color" value={props.textColor} onChange={(v) => updateElementProps(selected.id, { textColor: v })} t={t} />
+            <SliderRow label="Font size" value={props.fontSize ?? 14} min={10} max={24} onChange={(v) => updateElementProps(selected.id, { fontSize: v })} t={t} />
+          </>
+        )}
+
+        {/* Searchbar colors */}
+        {type === 'searchbar' && (
+          <>
+            <ColorRow label="Background" value={props.bgColor} onChange={(v) => updateElementProps(selected.id, { bgColor: v })} t={t} />
+            <ColorRow label="Text color" value={props.textColor} onChange={(v) => updateElementProps(selected.id, { textColor: v })} t={t} />
+            <SliderRow label="Font size" value={props.fontSize ?? 14} min={10} max={24} onChange={(v) => updateElementProps(selected.id, { fontSize: v })} t={t} />
+          </>
+        )}
 
         {/* Text color + font size */}
         {(type === 'text' || type === 'heading' || type === 'list') && (
@@ -330,9 +901,126 @@ export function PropertiesPanel() {
           </>
         )}
 
+        {/* Icon color */}
+        {type === 'icon' && (
+          <ColorRow label="Color" value={props.bgColor} onChange={(v) => updateElementProps(selected.id, { bgColor: v })} t={t} />
+        )}
+
+        {/* Chart color */}
+        {type === 'chart' && (
+          <ColorRow label="Color" value={props.bgColor} onChange={(v) => updateElementProps(selected.id, { bgColor: v })} t={t} />
+        )}
+
+        {/* Stepper color */}
+        {type === 'stepper' && (
+          <ColorRow label="Color" value={props.bgColor} onChange={(v) => updateElementProps(selected.id, { bgColor: v })} t={t} />
+        )}
+
+        {/* Map pin color */}
+        {type === 'map' && (
+          <ColorRow label="Pin color" value={props.bgColor} onChange={(v) => updateElementProps(selected.id, { bgColor: v })} t={t} />
+        )}
+
+        {/* Typography — font family & alignment for text elements */}
+        {(type === 'text' || type === 'heading' || type === 'button' || type === 'badge' || type === 'list') && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 8, fontWeight: 500 }}>Typography</div>
+
+            {/* Font family */}
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 11, color: t.textDim, marginBottom: 5 }}>Font family</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {[
+                  { label: 'Inter', value: 'Inter, sans-serif' },
+                  { label: 'System', value: '-apple-system, sans-serif' },
+                  { label: 'Serif', value: 'Georgia, serif' },
+                  { label: 'Mono', value: 'Menlo, monospace' },
+                ].map((f) => (
+                  <button
+                    key={f.label}
+                    onClick={() => updateElementProps(selected.id, { fontFamily: f.value })}
+                    style={{
+                      padding: '4px 9px', borderRadius: 6, border: '1.5px solid',
+                      borderColor: (props.fontFamily ?? 'Inter, sans-serif') === f.value ? '#6366f1' : t.border,
+                      background: (props.fontFamily ?? 'Inter, sans-serif') === f.value ? 'rgba(99,102,241,0.12)' : 'transparent',
+                      color: (props.fontFamily ?? 'Inter, sans-serif') === f.value ? t.accentText : t.textSecondary,
+                      fontSize: 11, cursor: 'pointer', fontFamily: f.value,
+                    }}
+                  >{f.label}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Font weight */}
+            {(type === 'text' || type === 'heading') && (
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 11, color: t.textDim, marginBottom: 5 }}>Weight</div>
+                <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                  {[
+                    { label: 'Thin', value: '100' },
+                    { label: 'Light', value: '300' },
+                    { label: 'Regular', value: '400' },
+                    { label: 'Medium', value: '500' },
+                    { label: 'Semi', value: '600' },
+                    { label: 'Bold', value: '700' },
+                    { label: 'Black', value: '900' },
+                  ].map((w) => {
+                    const cur = String(props.fontWeight ?? (type === 'heading' ? '600' : '400'))
+                    return (
+                      <button
+                        key={w.value}
+                        onClick={() => updateElementProps(selected.id, { fontWeight: w.value })}
+                        style={{
+                          flex: 1, minWidth: 40, padding: '4px 2px', borderRadius: 5, border: '1.5px solid',
+                          borderColor: cur === w.value ? '#6366f1' : t.border,
+                          background: cur === w.value ? 'rgba(99,102,241,0.12)' : 'transparent',
+                          color: cur === w.value ? t.accentText : t.textSecondary,
+                          fontSize: 10, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                          fontWeight: w.value,
+                        }}
+                      >{w.label}</button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Text align */}
+            {(type === 'text' || type === 'heading') && (
+              <div>
+                <div style={{ fontSize: 11, color: t.textDim, marginBottom: 5 }}>Alignment</div>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {([
+                    { value: 'left', icon: '⇤' },
+                    { value: 'center', icon: '↔' },
+                    { value: 'right', icon: '⇥' },
+                  ] as const).map((a) => (
+                    <button
+                      key={a.value}
+                      onClick={() => updateElementProps(selected.id, { textAlign: a.value })}
+                      style={{
+                        flex: 1, height: 28, borderRadius: 6,
+                        border: `1.5px solid ${(props.textAlign ?? 'left') === a.value ? '#6366f1' : t.border}`,
+                        background: (props.textAlign ?? 'left') === a.value ? 'rgba(99,102,241,0.12)' : 'transparent',
+                        color: (props.textAlign ?? 'left') === a.value ? t.accentText : t.textSecondary,
+                        fontSize: 14, cursor: 'pointer',
+                      }}
+                    >{a.icon}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Border radius */}
         {HAS_RADIUS.has(type) && (
           <SliderRow label="Roundness" value={props.borderRadius ?? globalRadius} min={0} max={40} onChange={(v) => updateElementProps(selected.id, { borderRadius: v })} t={t} />
+        )}
+
+        {/* Card padding */}
+        {type === 'card' && (
+          <SliderRow label="Padding" value={props.padding ?? 16} min={0} max={40} onChange={(v) => updateElementProps(selected.id, { padding: v })} t={t} />
         )}
 
         {/* Shadow */}
@@ -352,6 +1040,93 @@ export function PropertiesPanel() {
                 width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 0.2s',
               }} />
             </button>
+          </div>
+        )}
+
+        {/* ── Gradient fill ─────────────────────────────────────────────────── */}
+        {type !== 'draw' && type !== 'image' && type !== 'divider' && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span style={{ fontSize: 12, color: t.textSecondary }}>Gradient fill</span>
+              <button
+                onClick={() => {
+                  if (props.gradientFrom) {
+                    updateElementProps(selected.id, { gradientFrom: undefined, gradientTo: undefined, gradientAngle: undefined })
+                  } else {
+                    const seedColor =
+                      type === 'badge'
+                        ? (props.badgeColor ?? styles.primaryColor)
+                        : (type === 'text' || type === 'heading')
+                          ? (props.textColor ?? styles.primaryColor)
+                          : (props.bgColor ?? styles.primaryColor)
+                    updateElementProps(selected.id, { gradientFrom: seedColor, gradientTo: '#ec4899', gradientAngle: 135 })
+                  }
+                }}
+                style={{
+                  padding: '3px 9px', borderRadius: 6,
+                  border: `1px solid ${props.gradientFrom ? '#6366f1' : t.border}`,
+                  background: props.gradientFrom ? 'rgba(99,102,241,0.15)' : 'transparent',
+                  color: props.gradientFrom ? '#a5b4fc' : t.textDim,
+                  fontSize: 11, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                }}
+              >
+                {props.gradientFrom ? '✓ On' : 'Off'}
+              </button>
+            </div>
+
+            {props.gradientFrom && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {/* Preview strip */}
+                <div style={{
+                  height: 22, borderRadius: 6, border: `1px solid ${t.border}`,
+                  background: `linear-gradient(${props.gradientAngle ?? 135}deg, ${props.gradientFrom}, ${props.gradientTo ?? '#ec4899'})`,
+                }} />
+
+                {/* From / To color pickers */}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {([
+                    { label: 'From', key: 'gradientFrom' as const, val: props.gradientFrom },
+                    { label: 'To',   key: 'gradientTo'   as const, val: props.gradientTo ?? '#ec4899' },
+                  ]).map(({ label, key, val }) => (
+                    <div key={key} style={{ flex: 1 }}>
+                      <div style={{ fontSize: 10, color: t.textDim, marginBottom: 4 }}>{label}</div>
+                      <div style={{ position: 'relative', height: 28 }}>
+                        <div style={{ width: '100%', height: 28, borderRadius: 6, background: val, border: `1px solid ${t.border}` }} />
+                        <input
+                          type="color" value={val}
+                          onChange={(e) => updateElementProps(selected.id, { [key]: e.target.value })}
+                          style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Direction */}
+                <div>
+                  <div style={{ fontSize: 10, color: t.textDim, marginBottom: 5 }}>Direction</div>
+                  <div style={{ display: 'flex', gap: 3 }}>
+                    {[
+                      { label: '↑', angle: 0 }, { label: '↗', angle: 45 },
+                      { label: '→', angle: 90 }, { label: '↘', angle: 135 },
+                      { label: '↓', angle: 180 }, { label: '↙', angle: 225 },
+                      { label: '←', angle: 270 }, { label: '↖', angle: 315 },
+                    ].map(({ label, angle }) => {
+                      const active = (props.gradientAngle ?? 135) === angle
+                      return (
+                        <button key={angle} onClick={() => updateElementProps(selected.id, { gradientAngle: angle })}
+                          style={{
+                            flex: 1, height: 26, borderRadius: 5, fontSize: 11,
+                            border: `1.5px solid ${active ? '#6366f1' : t.border}`,
+                            background: active ? 'rgba(99,102,241,0.15)' : 'transparent',
+                            color: active ? '#a5b4fc' : t.textSecondary, cursor: 'pointer',
+                          }}>{label}</button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -386,6 +1161,22 @@ export function PropertiesPanel() {
           ))}
         </div>
       </div>
+
+      {/* ── Data Binding ───────────────────────────────────────────────────── */}
+      {appDatabase.tables.length > 0 && type !== 'draw' && (
+        <div style={{ borderTop: `1px solid ${t.border}`, paddingTop: 16, marginBottom: 4 }}>
+          <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 12, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 14 }}>⊞</span> Data Binding
+          </div>
+          <DataBindingEditor
+            elementType={type}
+            props={props}
+            tables={appDatabase.tables}
+            onChange={(updates) => updateElementProps(selected.id, updates)}
+            t={t}
+          />
+        </div>
+      )}
 
       {/* ── Behaviors ──────────────────────────────────────────────────────── */}
       <div style={{ borderTop: `1px solid ${t.border}`, paddingTop: 16 }}>
@@ -472,9 +1263,11 @@ export function PropertiesPanel() {
           Remove  (Del)
         </button>
       </div>
+
+      </>}
     </div>
   )
-}
+}  // end panelShell
 
 function inputStyle(t: UITheme): React.CSSProperties {
   return {
@@ -483,6 +1276,204 @@ function inputStyle(t: UITheme): React.CSSProperties {
     borderRadius: 8, color: t.textPrimary, fontSize: 13,
     fontFamily: 'Inter, sans-serif', outline: 'none',
   }
+}
+
+// ─── DataBindingEditor ────────────────────────────────────────────────────────
+function DataBindingEditor({ elementType, props, tables, onChange, t }: {
+  elementType: string
+  props: import('../types').ElementProps
+  tables: DataTable[]
+  onChange: (u: Partial<import('../types').ElementProps>) => void
+  t: UITheme
+}) {
+  const selStyle: React.CSSProperties = {
+    width: '100%', padding: '6px 8px', borderRadius: 7,
+    border: `1px solid ${t.border}`, background: t.bgInput,
+    color: t.textPrimary, fontSize: 12, outline: 'none',
+    fontFamily: 'Inter, sans-serif', cursor: 'pointer',
+  }
+
+  const boundTable = tables.find((tb) => tb.name === props.boundTable)
+  const formTable  = tables.find((tb) => tb.name === props.formTable)
+
+  // ── Universal "display value" block — shown for non-specialised element types ──
+  const SPECIALISED = new Set(['list', 'input', 'button'])
+  if (!SPECIALISED.has(elementType)) {
+    const displayHint: Record<string, string> = {
+      text: 'Replaces the body text with the bound field value.',
+      heading: 'Replaces the heading text with the bound field value.',
+      badge: 'Replaces the badge label.',
+      image: 'Uses the field value as the image URL.',
+      video: 'Uses the field value as the video URL.',
+      icon: 'Uses the field value as the icon name.',
+      rating: 'Uses the numeric field value as the star rating.',
+      progress: 'Uses the numeric field value (0-100) as the bar fill.',
+      slider: 'Displays the numeric field value on the slider.',
+      searchbar: 'Pre-fills the search bar with the bound field value.',
+      card: 'Shows the bound field value as a label inside the card.',
+    }
+    const hint = displayHint[elementType] ?? 'Shows the bound field value from the selected row.'
+    const showDisplayBinding = boundTable && props.boundDisplayField
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div>
+          <Label t={t}>Read from table</Label>
+          <select value={props.boundTable ?? ''} onChange={(e) => onChange({ boundTable: e.target.value || undefined, boundDisplayField: undefined })} style={selStyle}>
+            <option value="">— none —</option>
+            {tables.map((tb) => <option key={tb.id} value={tb.name}>{tb.label}</option>)}
+          </select>
+        </div>
+        {boundTable && (
+          <div>
+            <Label t={t}>Display field</Label>
+            <select value={props.boundDisplayField ?? ''} onChange={(e) => onChange({ boundDisplayField: e.target.value || undefined })} style={selStyle}>
+              <option value="">— pick a field —</option>
+              {boundTable.fields.map((f) => <option key={f.id} value={f.name}>{f.label} ({f.type})</option>)}
+            </select>
+          </div>
+        )}
+        {showDisplayBinding && (
+          <>
+            <Hint t={t}>{hint} Updates automatically when a row is selected in a linked List.</Hint>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '6px 8px', borderRadius: 6,
+              background: 'rgba(99,102,241,0.08)',
+              border: '1px solid rgba(99,102,241,0.2)',
+            }}>
+              <span style={{ fontSize: 12 }}>⊞</span>
+              <span style={{ fontSize: 11, color: t.accentText }}>
+                Bound to <code style={{ background: 'rgba(99,102,241,0.12)', padding: '1px 4px', borderRadius: 3 }}>{props.boundTable}.{props.boundDisplayField}</code>
+              </span>
+            </div>
+          </>
+        )}
+      </div>
+    )
+  }
+
+  if (elementType === 'list') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div>
+          <Label t={t}>Data source table</Label>
+          <select value={props.boundTable ?? ''} onChange={(e) => onChange({ boundTable: e.target.value || undefined })} style={selStyle}>
+            <option value="">— none —</option>
+            {tables.map((tb) => <option key={tb.id} value={tb.name}>{tb.label}</option>)}
+          </select>
+        </div>
+        {boundTable && (
+          <>
+            <div>
+              <Label t={t}>Title field</Label>
+              <select value={props.boundDisplayField ?? ''} onChange={(e) => onChange({ boundDisplayField: e.target.value || undefined })} style={selStyle}>
+                <option value="">— pick a field —</option>
+                {boundTable.fields.map((f) => <option key={f.id} value={f.name}>{f.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <Label t={t}>Subtitle field (optional)</Label>
+              <select value={props.boundSubField ?? ''} onChange={(e) => onChange({ boundSubField: e.target.value || undefined })} style={selStyle}>
+                <option value="">— none —</option>
+                {boundTable.fields.map((f) => <option key={f.id} value={f.name}>{f.label}</option>)}
+              </select>
+            </div>
+          </>
+        )}
+        {props.boundTable && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+            <input
+              type="checkbox"
+              id="listSelectable"
+              checked={!!props.listSelectable}
+              onChange={(e) => onChange({ listSelectable: e.target.checked || undefined })}
+              style={{ accentColor: '#6366f1', cursor: 'pointer' }}
+            />
+            <label htmlFor="listSelectable" style={{ fontSize: 12, color: t.textSecondary, cursor: 'pointer' }}>
+              Rows are tappable (select for edit / delete)
+            </label>
+          </div>
+        )}
+        {props.boundTable && !props.listSelectable && <Hint t={t}>Preview mode will show live rows from this table.</Hint>}
+        {props.boundTable && props.listSelectable && <Hint t={t}>Tapping a row in preview will select it and pre-fill any bound inputs on screen — ready for editing or deletion.</Hint>}
+      </div>
+    )
+  }
+
+  if (elementType === 'input') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div>
+          <Label t={t}>Form table</Label>
+          <select value={props.formTable ?? ''} onChange={(e) => onChange({ formTable: e.target.value || undefined })} style={selStyle}>
+            <option value="">— none —</option>
+            {tables.map((tb) => <option key={tb.id} value={tb.name}>{tb.label}</option>)}
+          </select>
+        </div>
+        {formTable && (
+          <div>
+            <Label t={t}>Bound field</Label>
+            <select value={props.inputField ?? ''} onChange={(e) => onChange({ inputField: e.target.value || undefined })} style={selStyle}>
+              <option value="">— pick a field —</option>
+              {formTable.fields.map((f) => <option key={f.id} value={f.name}>{f.label}</option>)}
+            </select>
+          </div>
+        )}
+        {props.formTable && props.inputField && (
+          <Hint t={t}>Submits to <code>{props.formTable}.{props.inputField}</code>. Pre-fills automatically when a list row is selected.</Hint>
+        )}
+      </div>
+    )
+  }
+
+  if (elementType === 'button') {
+    const action = props.buttonAction
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div>
+          <Label t={t}>Database action</Label>
+          <select
+            value={action ?? ''}
+            onChange={(e) => onChange({ buttonAction: (e.target.value as typeof action) || undefined })}
+            style={selStyle}
+          >
+            <option value="">— none —</option>
+            <option value="submit-form">➕ Insert new row</option>
+            <option value="update-row">✏️ Update selected row</option>
+            <option value="delete-row">🗑 Delete selected row</option>
+          </select>
+        </div>
+        {(action === 'submit-form' || action === 'update-row' || action === 'delete-row') && (
+          <div>
+            <Label t={t}>Target table</Label>
+            <select value={props.formTable ?? ''} onChange={(e) => onChange({ formTable: e.target.value || undefined })} style={selStyle}>
+              <option value="">— pick a table —</option>
+              {tables.map((tb) => <option key={tb.id} value={tb.name}>{tb.label}</option>)}
+            </select>
+          </div>
+        )}
+        {action === 'submit-form' && props.formTable && (
+          <Hint t={t}>Inserts a new row into <code>{props.formTable}</code> using values from bound inputs on this screen.</Hint>
+        )}
+        {action === 'update-row' && props.formTable && (
+          <Hint t={t}>Updates the currently selected row in <code>{props.formTable}</code>. Requires a selectable List on the same screen.</Hint>
+        )}
+        {action === 'delete-row' && props.formTable && (
+          <Hint t={t}>Deletes the currently selected row from <code>{props.formTable}</code>. Requires a selectable List on the same screen.</Hint>
+        )}
+      </div>
+    )
+  }
+
+  return null
+}
+
+function Label({ t, children }: { t: UITheme; children: React.ReactNode }) {
+  return <div style={{ fontSize: 11, color: t.textSecondary, marginBottom: 4, fontWeight: 500 }}>{children}</div>
+}
+function Hint({ t, children }: { t: UITheme; children: React.ReactNode }) {
+  return <div style={{ fontSize: 11, color: t.textDim, lineHeight: 1.5, padding: '6px 8px', borderRadius: 6, background: t.bgApp }}>{children}</div>
 }
 
 function PosSizeInput({ label, value, min, onChange, t }: {
