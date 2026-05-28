@@ -24,12 +24,37 @@ export type ElementType =
   | 'chart'
   | 'stepper'
   | 'custom'
+  | 'draw'
 
 export interface Flow {
   id: string
   trigger: string
   description: string
   action: string
+}
+
+// ── App database (the backend for the app being built) ───────────────────────
+export type DbFieldType = 'text' | 'number' | 'boolean' | 'date' | 'email' | 'url'
+
+export interface DataField {
+  id: string
+  name: string       // DB column name (snake_case, used in Supabase)
+  label: string      // human-readable display label
+  type: DbFieldType
+  required?: boolean
+}
+
+export interface DataTable {
+  id: string
+  name: string       // DB table name (snake_case, used in Supabase)
+  label: string      // human-readable display label
+  fields: DataField[]
+}
+
+export interface AppDatabase {
+  supabaseUrl: string
+  supabaseAnonKey: string
+  tables: DataTable[]
 }
 
 export interface ElementProps {
@@ -47,35 +72,60 @@ export interface ElementProps {
   shadow?: boolean
   checked?: boolean
   badgeColor?: string
-  // Existing scalar props
-  value?: number          // slider (0–100), progress (0–100), rating (1–5), stepper
+  value?: number
   min?: number
   max?: number
-  initials?: string       // avatar
+  initials?: string
   alertVariant?: 'info' | 'success' | 'warning' | 'error'
-  items?: string          // list: newline-separated
-  opacity?: number        // 0–1
-  tabs?: string           // tabbar: comma-separated tab names
-  activeTab?: number      // tabbar: active tab index
+  items?: string
+  opacity?: number
+  tabs?: string
+  activeTab?: number
   // Custom element
-  svg?: string            // raw SVG markup
-  description?: string    // prompt used to generate it
-  // Typography (new)
+  svg?: string
+  description?: string
+  // Typography
   fontFamily?: string
   textAlign?: 'left' | 'center' | 'right'
-  // Icon element (new)
+  // Icon element
   iconName?: string
-  // Dropdown element (new)
-  dropdownItems?: string  // comma-separated options
+  // Dropdown element
+  dropdownItems?: string
   selectedItem?: string
-  // Video element (new)
+  // Video element
   videoUrl?: string
-  // Chart element (new)
+  // Map element
+  mapLocation?: string
+  mapZoom?: number
+  // Chart element
   chartType?: 'bar' | 'line' | 'pie'
-  chartData?: string      // comma-separated numbers
-  chartLabels?: string    // comma-separated labels
-  // Stepper element (new)
+  chartData?: string
+  chartLabels?: string
+  // Stepper element
   stepperStep?: number
+  // Data binding
+  boundTable?: string          // table name for list elements
+  boundDisplayField?: string   // field name used as the primary row label
+  boundSubField?: string       // field name used as secondary / subtitle
+  listSelectable?: boolean     // tapping a row stores it as the selected row (for edit/delete)
+  inputField?: string          // field name this input is bound to
+  formTable?: string           // target table name for form submission
+  buttonAction?: 'submit-form' | 'update-row' | 'delete-row'
+
+  // Gradient fill (applies to any element with a bgColor surface)
+  gradientFrom?: string
+  gradientTo?: string
+  gradientAngle?: number  // CSS linear-gradient degrees (0=up, 90=right, 135=diagonal)
+
+  // Draw element
+  pathData?: string      // SVG path string relative to element origin
+  strokeColor?: string
+  strokeWidth?: number
+  fillColor?: string
+  fillGradient?: { color2: string; angle: number }  // linear gradient fill for shapes
+  strokeLinecap?: 'round' | 'square' | 'butt'
+  blendMode?: string     // CSS mix-blend-mode (e.g. 'multiply', 'screen', 'overlay')
+  glowRadius?: number    // feGaussianBlur stdDeviation for neon/glow effect
 }
 
 export interface AppVariable {
@@ -94,15 +144,16 @@ export interface CanvasElement {
   height: number
   props: ElementProps
   flows: Flow[]
-  locked?: boolean   // cannot be moved/resized in design mode
-  hidden?: boolean   // invisible in design mode (shown dimmed)
+  locked?: boolean
+  hidden?: boolean
 }
 
 export interface Screen {
   id: string
   name: string
   elements: CanvasElement[]
-  background?: string  // canvas fill colour, default '#faf8f5'
+  background?: string
+  paintCanvas?: string   // base64 PNG of pixel-based paint strokes
 }
 
 export type DeviceType = 'phone' | 'tablet' | 'desktop'

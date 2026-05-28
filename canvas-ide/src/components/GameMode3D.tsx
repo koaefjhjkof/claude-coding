@@ -102,13 +102,13 @@ export function GameMode3D({ onBack }: { onBack: () => void }) {
   const [, forceRender] = useState(0)
 
   const mountRef  = useRef<HTMLDivElement>(null)
-  const sceneRef  = useRef<THREE.Scene>()
-  const camRef    = useRef<THREE.PerspectiveCamera>()
-  const rendRef   = useRef<THREE.WebGLRenderer>()
-  const ctrlRef   = useRef<OrbitControls>()
+  const sceneRef  = useRef<THREE.Scene | undefined>(undefined)
+  const camRef    = useRef<THREE.PerspectiveCamera | undefined>(undefined)
+  const rendRef   = useRef<THREE.WebGLRenderer | undefined>(undefined)
+  const ctrlRef   = useRef<OrbitControls | undefined>(undefined)
   const meshMapRef = useRef<ThreeMeshMap>({})
   const rafRef    = useRef(0)
-  const floorRef  = useRef<THREE.Mesh>()  // invisible raycast target
+  const floorRef  = useRef<THREE.Mesh | undefined>(undefined)  // invisible raycast target
 
   // FPS play state refs
   const playingRef  = useRef(false)
@@ -476,7 +476,7 @@ export function GameMode3D({ onBack }: { onBack: () => void }) {
                   <div key={field} style={{ marginBottom: 8 }}>
                     <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginBottom: 3 }}>{label}</div>
                     <input type="number" step={0.5}
-                      defaultValue={(selectedObj as Record<string, number>)[field] ?? 0}
+                      defaultValue={((selectedObj as unknown) as Record<string, number>)[field] ?? 0}
                       onBlur={(e) => {
                         const v = parseFloat(e.target.value)
                         if (!isNaN(v)) setObjects(prev => prev.map(o => o.id === selectedObj.id ? { ...o, [field]: v } : o))

@@ -346,7 +346,7 @@ export function GameMode2D({ onBack }: { onBack: () => void }) {
         drawObj(ctx, oo, camXRef.current, false)
       }
       // Draw player
-      const po = { ...DEFAULTS.player, id: '', kind: 'player' as const,
+      const po: GObj2D = { id: '', kind: 'player', color: DEFAULTS.player.color ?? '#3b82f6',
                    x: rs.player.x, y: rs.player.y, w: P_W, h: P_H }
       drawObj(ctx, po, camXRef.current, false, rs.player.alive ? 1 : 0.3)
 
@@ -399,10 +399,11 @@ export function GameMode2D({ onBack }: { onBack: () => void }) {
       // Place object
       const def = DEFAULTS[activeTool]
       const w = def.w ?? 80, h = def.h ?? 40
-      const newObj: GObj2D = {
+      const newObj = {
+        ...def,
         id: uuidv4(), kind: activeTool,
-        x: cx - w / 2, y: cy - h / 2, ...def as GObj2D,
-      }
+        x: cx - w / 2, y: cy - h / 2,
+      } as GObj2D
       setObjects(prev => prev.filter(o => activeTool === 'player' ? o.kind !== 'player' : true).concat(newObj))
       setSelectedId(newObj.id); setActiveTool(null)
     } else {
@@ -513,7 +514,7 @@ export function GameMode2D({ onBack }: { onBack: () => void }) {
                   ...(selectedObj.kind === 'coin'  ? [{ label: 'Points', field: 'points' }] : []),
                 ].map(({ label, field }) => (
                   <PropField key={field} label={label}
-                    value={Math.round((selectedObj as Record<string, number>)[field] ?? 0)}
+                    value={Math.round(((selectedObj as unknown) as Record<string, number>)[field] ?? 0)}
                     onChange={(v) => setObjects(prev => prev.map(o => o.id === selectedObj.id ? { ...o, [field]: v } : o))} />
                 ))}
                 <div style={{ marginTop: 10 }}>

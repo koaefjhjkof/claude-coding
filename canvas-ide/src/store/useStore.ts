@@ -1,7 +1,12 @@
 import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
-import type { CanvasElement, Screen, DeviceType, AppStyles, ElementType, Flow, ElementProps, AlignType, AppVariable } from '../types'
-import { DEVICE_SIZES } from '../data/devices'
+import type { CanvasElement, Screen, DeviceType, AppStyles, ElementType, Flow, ElementProps, AlignType, AppVariable, DataTable, DataField, AppDatabase } from '../types'
+import type { UserProfile } from '../lib/supabase'
+import { DEVICE_SIZES, getDeviceSpec } from '../data/devices'
+
+// Minimal auth user shape — compatible with supabase User but avoids a hard
+// import of the full Supabase type tree in the store.
+export interface AuthUser { id: string; email: string | undefined }
 
 interface HistorySnapshot {
   screens: Screen[]
@@ -15,8 +20,9 @@ interface CanvasStore {
 
   // Selection & UI
   selectedId: string | null
-  selectedIds: string[]        // multi-select set
+  selectedIds: string[]
   device: DeviceType
+  devicePreset: string   // e.g. 'phone', 'iphone-14', 'ipad-pro-11'
   styles: AppStyles
   uiTheme: 'dark' | 'light'
   flowModalElementId: string | null
@@ -26,6 +32,35 @@ interface CanvasStore {
   previewScreenId: string
   snapToGrid: boolean
   zoom: number
+
+  // Draw tool
+  drawMode: boolean
+  drawTool: 'pen' | 'pencil' | 'marker' | 'highlighter' | 'neon' | 'spray' | 'line' | 'arrow' | 'rect' | 'ellipse' | 'star' | 'triangle' | 'watercolor' | 'oil' | 'acrylic' | 'inkwash'
+  drawColor: string
+  drawWidth: number
+  drawFill: string              // '' = no fill
+  drawGradientEnabled: boolean  // gradient fill for shapes
+  drawGradientColor2: string    // second gradient stop colour
+  drawGradientAngle: number     // 0-360 degrees
+  drawOpacity: number           // 0–1
+  drawBlendMode: string         // CSS mix-blend-mode, e.g. 'normal', 'multiply', 'screen'
+  drawGlow: number              // blur radius px for neon/glow effect (0 = off)
+
+  // App database (backend for the app being built)
+  appDatabase: AppDatabase
+  setAppDatabase: (updates: Partial<AppDatabase>) => void
+  addDataTable: (table: Omit<DataTable, 'id'>) => void
+  updateDataTable: (id: string, updates: Partial<Omit<DataTable, 'id'>>) => void
+  removeDataTable: (id: string) => void
+  addDataField: (tableId: string, field: Omit<DataField, 'id'>) => void
+  updateDataField: (tableId: string, fieldId: string, updates: Partial<Omit<DataField, 'id'>>) => void
+  removeDataField: (tableId: string, fieldId: string) => void
+
+  // Auth
+  user: AuthUser | null
+  userProfile: UserProfile | null
+  setUser: (user: AuthUser | null) => void
+  setUserProfile: (profile: UserProfile | null) => void
 
   // Variables
   variables: AppVariable[]
@@ -37,7 +72,7 @@ interface CanvasStore {
   past: HistorySnapshot[]
   future: HistorySnapshot[]
 
-  // Derived helpers (call inside actions)
+  // Derived helpers
   _snapshot: () => HistorySnapshot
   _pushHistory: () => void
 
@@ -47,11 +82,14 @@ interface CanvasStore {
   renameScreen: (id: string, name: string) => void
   switchScreen: (id: string) => void
 
-  // Element actions (operate on active screen)
+  // Element actions
   addElement: (type: ElementType, x: number, y: number, width: number, height: number, props: ElementProps) => void
+  addElements: (elements: Omit<CanvasElement, 'id' | 'flows'>[]) => void
   updateElement: (id: string, updates: Partial<CanvasElement>) => void
   updateElementProps: (id: string, props: Partial<ElementProps>) => void
+  updateElements: (elements: CanvasElement[]) => void
   removeElement: (id: string) => void
+  removeElements: (ids: string[]) => void
   removeSelectedElements: () => void
   duplicateElement: (id: string) => void
   copyElement: (id: string) => void
@@ -66,11 +104,27 @@ interface CanvasStore {
   toggleSnapToGrid: () => void
   setZoom: (zoom: number) => void
   importProject: (data: { screens: Screen[]; styles: AppStyles; device: DeviceType; uiTheme: 'dark' | 'light' }) => void
+  clearScreen: () => void
 
   // Global style, device & misc
   setDevice: (device: DeviceType) => void
+  setDevicePreset: (preset: string) => void
   updateStyles: (styles: Partial<AppStyles>) => void
   setUiTheme: (theme: 'dark' | 'light') => void
+
+  // Draw tool
+  setDrawMode: (on: boolean) => void
+  setDrawTool: (tool: 'pen' | 'pencil' | 'marker' | 'highlighter' | 'neon' | 'spray' | 'line' | 'arrow' | 'rect' | 'ellipse' | 'star' | 'triangle' | 'watercolor' | 'oil' | 'acrylic' | 'inkwash') => void
+  setPaintCanvas: (screenId: string, data: string) => void
+  setDrawColor: (color: string) => void
+  setDrawWidth: (width: number) => void
+  setDrawFill: (fill: string) => void
+  setDrawGradientEnabled: (enabled: boolean) => void
+  setDrawGradientColor2: (color: string) => void
+  setDrawGradientAngle: (angle: number) => void
+  setDrawOpacity: (opacity: number) => void
+  setDrawBlendMode: (mode: string) => void
+  setDrawGlow: (glow: number) => void
 
   // Flow modal
   openFlowModal: (elementId: string) => void
@@ -121,7 +175,8 @@ export const useStore = create<CanvasStore>((set, get) => ({
   selectedId: null,
   selectedIds: [],
   device: 'phone',
-  uiTheme: 'dark',
+  devicePreset: 'phone',
+  uiTheme: 'light',   // ← light mode is now the default
   flowModalElementId: null,
   customElementModalOpen: false,
   customElementEditId: null,
@@ -135,6 +190,20 @@ export const useStore = create<CanvasStore>((set, get) => ({
   future: [],
   styles: INITIAL_STYLES,
   variables: [],
+  appDatabase: { supabaseUrl: '', supabaseAnonKey: '', tables: [] },
+  user: null,
+  userProfile: null,
+  drawMode: false,
+  drawTool: 'pen',
+  drawColor: '#6366f1',
+  drawWidth: 3,
+  drawFill: '',
+  drawGradientEnabled: false,
+  drawGradientColor2: '#f59e0b',
+  drawGradientAngle: 135,
+  drawOpacity: 1,
+  drawBlendMode: 'normal',
+  drawGlow: 0,
 
   _snapshot: () => ({
     screens: JSON.parse(JSON.stringify(get().screens)),
@@ -192,6 +261,34 @@ export const useStore = create<CanvasStore>((set, get) => ({
     }))
   },
 
+  // Bulk add — used by Auto Design
+  addElements: (elements) => {
+    get()._pushHistory()
+    const newEls: CanvasElement[] = elements.map((e) => ({
+      ...e,
+      id: uuidv4(),
+      flows: [],
+    }))
+    set((s) => ({
+      screens: s.screens.map((sc) =>
+        sc.id === s.activeScreenId
+          ? { ...sc, elements: [...sc.elements, ...newEls] }
+          : sc
+      ),
+    }))
+  },
+
+  clearScreen: () => {
+    get()._pushHistory()
+    set((s) => ({
+      screens: s.screens.map((sc) =>
+        sc.id === s.activeScreenId ? { ...sc, elements: [] } : sc
+      ),
+      selectedId: null,
+      selectedIds: [],
+    }))
+  },
+
   updateElement: (id, updates) => {
     set((s) => ({
       screens: s.screens.map((sc) =>
@@ -227,6 +324,31 @@ export const useStore = create<CanvasStore>((set, get) => ({
       ),
       selectedId: s.selectedId === id ? null : s.selectedId,
       selectedIds: s.selectedIds.filter((x) => x !== id),
+    }))
+  },
+
+  removeElements: (ids) => {
+    const idSet = new Set(ids)
+    get()._pushHistory()
+    set((s) => ({
+      screens: s.screens.map((sc) =>
+        sc.id === s.activeScreenId
+          ? { ...sc, elements: sc.elements.filter((el) => !idSet.has(el.id)) }
+          : sc
+      ),
+      selectedId: idSet.has(s.selectedId ?? '') ? null : s.selectedId,
+      selectedIds: s.selectedIds.filter((id) => !idSet.has(id)),
+    }))
+  },
+
+  updateElements: (elements) => {
+    const map = new Map(elements.map((e) => [e.id, e]))
+    set((s) => ({
+      screens: s.screens.map((sc) =>
+        sc.id === s.activeScreenId
+          ? { ...sc, elements: sc.elements.map((el) => map.get(el.id) ?? el) }
+          : sc
+      ),
     }))
   },
 
@@ -292,20 +414,20 @@ export const useStore = create<CanvasStore>((set, get) => ({
   },
 
   alignElement: (id, align) => {
-    const { device } = get()
-    const { width: frameW, height: frameH } = DEVICE_SIZES[device]
+    const { devicePreset } = get()
+    const { width: frameW, height: frameH } = getDeviceSpec(devicePreset)
     set((s) => {
       const screen = s.screens.find((sc) => sc.id === s.activeScreenId)
       const el = screen?.elements.find((e) => e.id === id)
       if (!el) return {}
       let newX = el.x, newY = el.y
       switch (align) {
-        case 'left':     newX = 0; break
-        case 'center-h': newX = Math.round((frameW - el.width) / 2); break
-        case 'right':   newX = frameW - el.width; break
-        case 'top':     newY = 0; break
-        case 'center-v': newY = Math.round((frameH - el.height) / 2); break
-        case 'bottom':  newY = frameH - el.height; break
+        case 'left':      newX = 0; break
+        case 'center-h':  newX = Math.round((frameW - el.width) / 2); break
+        case 'right':     newX = frameW - el.width; break
+        case 'top':       newY = 0; break
+        case 'center-v':  newY = Math.round((frameH - el.height) / 2); break
+        case 'bottom':    newY = frameH - el.height; break
       }
       return {
         screens: s.screens.map((sc) =>
@@ -386,29 +508,77 @@ export const useStore = create<CanvasStore>((set, get) => ({
   },
 
   toggleSnapToGrid: () => set((s) => ({ snapToGrid: !s.snapToGrid })),
-
   setZoom: (zoom) => set({ zoom: Math.max(0.25, Math.min(3, zoom)) }),
 
   importProject: (data) => {
-    set({
+    set((s) => ({
       screens: data.screens,
       styles: data.styles,
       device: data.device,
-      uiTheme: data.uiTheme ?? 'dark',
+      devicePreset: (data as { devicePreset?: string }).devicePreset ?? data.device,
+      uiTheme: data.uiTheme ?? 'light',
+      appDatabase: (data as { appDatabase?: AppDatabase }).appDatabase ?? s.appDatabase,
+      variables: (data as { variables?: AppVariable[] }).variables ?? s.variables,
       activeScreenId: data.screens[0]?.id ?? '',
       selectedId: null,
       selectedIds: [],
       zoom: 1,
       past: [],
       future: [],
-    })
+    }))
   },
 
-  setDevice: (device) => set({ device }),
-
+  setDevice: (device) => set({ device, devicePreset: device }),
+  setDevicePreset: (preset) => {
+    const spec = getDeviceSpec(preset)
+    set({ devicePreset: preset, device: spec.category })
+  },
   updateStyles: (styles) => set((s) => ({ styles: { ...s.styles, ...styles } })),
-
   setUiTheme: (uiTheme) => set({ uiTheme }),
+
+  setAppDatabase: (updates) => set((s) => ({ appDatabase: { ...s.appDatabase, ...updates } })),
+  addDataTable: (table) => set((s) => ({
+    appDatabase: { ...s.appDatabase, tables: [...s.appDatabase.tables, { ...table, id: uuidv4() }] },
+  })),
+  updateDataTable: (id, updates) => set((s) => ({
+    appDatabase: { ...s.appDatabase, tables: s.appDatabase.tables.map((t) => t.id === id ? { ...t, ...updates } : t) },
+  })),
+  removeDataTable: (id) => set((s) => ({
+    appDatabase: { ...s.appDatabase, tables: s.appDatabase.tables.filter((t) => t.id !== id) },
+  })),
+  addDataField: (tableId, field) => set((s) => ({
+    appDatabase: { ...s.appDatabase, tables: s.appDatabase.tables.map((t) =>
+      t.id === tableId ? { ...t, fields: [...t.fields, { ...field, id: uuidv4() }] } : t
+    ) },
+  })),
+  updateDataField: (tableId, fieldId, updates) => set((s) => ({
+    appDatabase: { ...s.appDatabase, tables: s.appDatabase.tables.map((t) =>
+      t.id === tableId ? { ...t, fields: t.fields.map((f) => f.id === fieldId ? { ...f, ...updates } : f) } : t
+    ) },
+  })),
+  removeDataField: (tableId, fieldId) => set((s) => ({
+    appDatabase: { ...s.appDatabase, tables: s.appDatabase.tables.map((t) =>
+      t.id === tableId ? { ...t, fields: t.fields.filter((f) => f.id !== fieldId) } : t
+    ) },
+  })),
+
+  setUser: (user) => set({ user }),
+  setUserProfile: (userProfile) => set({ userProfile }),
+
+  setDrawMode: (drawMode) => set({ drawMode }),
+  setDrawTool: (drawTool) => set({ drawTool }),
+  setDrawColor: (drawColor) => set({ drawColor }),
+  setDrawWidth: (drawWidth) => set({ drawWidth }),
+  setDrawFill: (drawFill) => set({ drawFill }),
+  setDrawGradientEnabled: (drawGradientEnabled) => set({ drawGradientEnabled }),
+  setDrawGradientColor2: (drawGradientColor2) => set({ drawGradientColor2 }),
+  setDrawGradientAngle: (drawGradientAngle) => set({ drawGradientAngle }),
+  setDrawOpacity: (drawOpacity) => set({ drawOpacity }),
+  setDrawBlendMode: (drawBlendMode) => set({ drawBlendMode }),
+  setDrawGlow: (drawGlow) => set({ drawGlow }),
+  setPaintCanvas: (screenId, data) => set((s) => ({
+    screens: s.screens.map((sc) => sc.id === screenId ? { ...sc, paintCanvas: data || undefined } : sc),
+  })),
 
   openFlowModal: (elementId) => set({ flowModalElementId: elementId }),
   closeFlowModal: () => set({ flowModalElementId: null }),
@@ -456,7 +626,6 @@ export const useStore = create<CanvasStore>((set, get) => ({
 
   openGameMode: () => set({ gameModeOpen: true }),
   closeGameMode: () => set({ gameModeOpen: false }),
-
   setPreviewScreen: (id) => set({ previewScreenId: id }),
 
   addVariable: (v) => set((s) => ({ variables: [...s.variables, { ...v, id: uuidv4() }] })),
@@ -490,16 +659,11 @@ export const useStore = create<CanvasStore>((set, get) => ({
   },
 }))
 
-// Selector: active screen's elements
 export const selectElements = (s: CanvasStore) =>
   s.screens.find((sc) => sc.id === s.activeScreenId)?.elements ?? []
 
-// Selector: preview screen's elements
 export const selectPreviewElements = (s: CanvasStore) =>
   s.screens.find((sc) => sc.id === s.previewScreenId)?.elements ?? []
 
-// Selector: the currently selected element (or null).
-// Granular — only triggers a re-render when the selected element itself changes,
-// not when other elements are added/moved/removed.
 export const selectSelectedElement = (s: CanvasStore) =>
   s.screens.find((sc) => sc.id === s.activeScreenId)?.elements.find((el) => el.id === s.selectedId) ?? null

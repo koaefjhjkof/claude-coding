@@ -201,7 +201,7 @@ export const PIECES: PieceDef[] = [
     description: 'Interactive map view',
     defaultWidth: 280,
     defaultHeight: 200,
-    defaultProps: { label: 'My Location', borderRadius: 12 },
+    defaultProps: { mapLocation: 'New York', mapZoom: 13, borderRadius: 12 },
   },
 
   // ── New: Input variants ───────────────────────────────────────────────────
@@ -239,6 +239,17 @@ export const PIECES: PieceDef[] = [
       label: 'Weekly Stats',
     },
   },
+
+  // ── Drawing ───────────────────────────────────────────────────────────────
+  {
+    type: 'draw',
+    label: 'Drawing',
+    icon: '✏',
+    description: 'Freehand pen stroke',
+    defaultWidth: 200,
+    defaultHeight: 100,
+    defaultProps: { strokeColor: '#6366f1', strokeWidth: 3, pathData: 'M10,50 Q60,10 100,50 Q140,90 190,50' },
+  },
 ]
 
 export const PIECE_CATEGORIES = [
@@ -249,4 +260,5 @@ export const PIECE_CATEGORIES = [
   { label: 'Data',               types: ['chart', 'progress', 'list'] },
   { label: 'Feedback',           types: ['alert'] },
   { label: 'Layout & Nav',       types: ['card', 'divider', 'tabbar'] },
+  { label: 'Drawing',            types: ['draw'] },
 ]

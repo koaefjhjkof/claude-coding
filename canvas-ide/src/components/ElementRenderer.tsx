@@ -5,6 +5,14 @@ import { useStore } from '../store/useStore'
 // Defined at module level — never re-created
 const RADIUS_MAP = { sharp: 4, medium: 10, soft: 20 } as const
 
+/** Returns a gradient string when gradient props are set, otherwise bgColor or the fallback. */
+function gradBg(p: import('../types').ElementProps, fallback?: string): string | undefined {
+  if (p.gradientFrom && p.gradientTo) {
+    return `linear-gradient(${p.gradientAngle ?? 135}deg, ${p.gradientFrom}, ${p.gradientTo})`
+  }
+  return p.bgColor ?? fallback
+}
+
 // ─── Icon paths (Heroicons outline, viewBox 0 0 24 24) ────────────────────────
 const ICON_PATHS: Record<string, string> = {
   home: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6',
@@ -60,9 +68,7 @@ export const ElementRenderer = memo(function ElementRenderer({ element }: Props)
       case 'button': {
         const isSecondary = props.variant === 'secondary'
         const isGhost     = props.variant === 'ghost'
-        const bg = props.bgColor
-          ? props.bgColor
-          : isGhost || isSecondary ? 'transparent' : styles.primaryColor
+        const bg = gradBg(props) ?? (isGhost || isSecondary ? 'transparent' : styles.primaryColor)
         return (
           <button style={{
             width: '100%', height: '100%',
@@ -70,8 +76,9 @@ export const ElementRenderer = memo(function ElementRenderer({ element }: Props)
             color: props.textColor ?? (isGhost || isSecondary ? styles.primaryColor : '#fff'),
             border: isSecondary ? `2px solid ${styles.primaryColor}` : 'none',
             borderRadius: props.borderRadius ?? globalRadius,
-            fontFamily: 'Inter, sans-serif', fontWeight: 500,
+            fontFamily: props.fontFamily ?? 'Inter, sans-serif', fontWeight: props.fontWeight ?? 500,
             fontSize: props.fontSize ?? 15, cursor: 'pointer', letterSpacing: '0.01em',
+            boxShadow: props.shadow ? '0 4px 14px rgba(0,0,0,0.18), 0 1px 4px rgba(0,0,0,0.08)' : 'none',
           }}>
             {props.label ?? 'Button'}
           </button>
@@ -79,11 +86,16 @@ export const ElementRenderer = memo(function ElementRenderer({ element }: Props)
       }
 
       // ── Heading ─────────────────────────────────────────────────────────────
-      case 'heading':
+      case 'heading': {
+        const hGrad = props.gradientFrom && props.gradientTo
         return (
           <div style={{
             width: '100%', height: '100%', display: 'flex', alignItems: 'center',
-            color: props.textColor ?? styles.textColor,
+            color: hGrad ? undefined : (props.textColor ?? styles.textColor),
+            background: hGrad ? `linear-gradient(${props.gradientAngle ?? 135}deg, ${props.gradientFrom}, ${props.gradientTo})` : undefined,
+            WebkitBackgroundClip: hGrad ? 'text' : undefined,
+            backgroundClip: hGrad ? 'text' : undefined,
+            WebkitTextFillColor: hGrad ? 'transparent' : undefined,
             fontSize: props.fontSize ?? 28, fontWeight: props.fontWeight ?? '600',
             fontFamily: props.fontFamily ?? 'Inter, sans-serif', lineHeight: 1.2,
             textAlign: props.textAlign ?? 'left',
@@ -92,14 +104,21 @@ export const ElementRenderer = memo(function ElementRenderer({ element }: Props)
             {props.text ?? 'Heading'}
           </div>
         )
+      }
 
       // ── Text ────────────────────────────────────────────────────────────────
-      case 'text':
+      case 'text': {
+        const tGrad = props.gradientFrom && props.gradientTo
         return (
           <div style={{
             width: '100%', height: '100%', display: 'flex', alignItems: 'flex-start',
-            color: props.textColor ?? '#6b7280',
+            color: tGrad ? undefined : (props.textColor ?? '#6b7280'),
+            background: tGrad ? `linear-gradient(${props.gradientAngle ?? 135}deg, ${props.gradientFrom}, ${props.gradientTo})` : undefined,
+            WebkitBackgroundClip: tGrad ? 'text' : undefined,
+            backgroundClip: tGrad ? 'text' : undefined,
+            WebkitTextFillColor: tGrad ? 'transparent' : undefined,
             fontSize: props.fontSize ?? 15, fontFamily: props.fontFamily ?? 'Inter, sans-serif',
+            fontWeight: props.fontWeight ?? 400,
             lineHeight: 1.6, overflow: 'hidden',
             textAlign: props.textAlign ?? 'left',
             justifyContent: props.textAlign === 'center' ? 'center' : props.textAlign === 'right' ? 'flex-end' : 'flex-start',
@@ -107,17 +126,39 @@ export const ElementRenderer = memo(function ElementRenderer({ element }: Props)
             {props.text ?? 'Your text goes here.'}
           </div>
         )
+      }
 
       // ── Card ────────────────────────────────────────────────────────────────
       case 'card':
         return (
           <div style={{
             width: '100%', height: '100%',
-            background: props.bgColor ?? '#ffffff',
+            background: gradBg(props, '#ffffff'),
             borderRadius: props.borderRadius ?? globalRadius,
             boxShadow: props.shadow ? '0 4px 24px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06)' : 'none',
             padding: props.padding ?? 20,
-          }} />
+            overflow: 'hidden',
+          }}>
+            {props.label && (
+              <div style={{
+                fontSize: props.fontSize ?? 15, fontWeight: props.fontWeight ?? 600,
+                color: props.textColor ?? styles.textColor,
+                fontFamily: props.fontFamily ?? 'Inter, sans-serif',
+                lineHeight: 1.3,
+              }}>
+                {props.label}
+              </div>
+            )}
+            {props.text && (
+              <div style={{
+                fontSize: (props.fontSize ?? 15) - 2, color: props.textColor ? props.textColor + 'aa' : '#6b7280',
+                fontFamily: props.fontFamily ?? 'Inter, sans-serif',
+                marginTop: props.label ? 6 : 0, lineHeight: 1.5,
+              }}>
+                {props.text}
+              </div>
+            )}
+          </div>
         )
 
       // ── Image ────────────────────────────────────────────────────────────────
@@ -146,11 +187,12 @@ export const ElementRenderer = memo(function ElementRenderer({ element }: Props)
         return (
           <div style={{
             width: '100%', height: '100%',
-            background: '#f9fafb', border: '1.5px solid #e5e7eb',
+            background: props.bgColor ?? '#f9fafb',
+            border: `1.5px solid ${props.bgColor ? 'transparent' : '#e5e7eb'}`,
             borderRadius: props.borderRadius ?? globalRadius,
             display: 'flex', alignItems: 'center', padding: '0 14px',
-            color: '#9ca3af', fontSize: props.fontSize ?? 14,
-            fontFamily: 'Inter, sans-serif',
+            color: props.textColor ?? '#9ca3af', fontSize: props.fontSize ?? 14,
+            fontFamily: props.fontFamily ?? 'Inter, sans-serif',
           }}>
             {props.placeholder ?? 'Type here…'}
           </div>
@@ -181,12 +223,18 @@ export const ElementRenderer = memo(function ElementRenderer({ element }: Props)
       }
 
       // ── Badge ───────────────────────────────────────────────────────────────
-      case 'badge':
+      case 'badge': {
+        const baseColor = props.badgeColor ?? styles.primaryColor
+        const bGrad = !!(props.gradientFrom && props.gradientTo)
+        const badgeBg = bGrad
+          ? gradBg(props, baseColor)!
+          : baseColor + '20'
+        const badgeText = bGrad ? '#fff' : baseColor
         return (
           <div style={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            background: (props.badgeColor ?? styles.primaryColor) + '20',
-            color: props.badgeColor ?? styles.primaryColor,
+            background: badgeBg,
+            color: badgeText,
             borderRadius: 999, padding: '4px 12px',
             fontSize: 12, fontWeight: 600, fontFamily: 'Inter, sans-serif',
             letterSpacing: '0.03em', height: '100%',
@@ -194,11 +242,12 @@ export const ElementRenderer = memo(function ElementRenderer({ element }: Props)
             {props.label ?? 'Badge'}
           </div>
         )
+      }
 
       // ── Slider ──────────────────────────────────────────────────────────────
       case 'slider': {
         const val = props.value ?? 60
-        const trackColor = props.bgColor ?? styles.primaryColor
+        const trackColor = gradBg(props, styles.primaryColor)
         return (
           <div style={{
             width: '100%', height: '100%', display: 'flex', flexDirection: 'column',
@@ -224,7 +273,7 @@ export const ElementRenderer = memo(function ElementRenderer({ element }: Props)
       // ── Progress ────────────────────────────────────────────────────────────
       case 'progress': {
         const val = props.value ?? 60
-        const barColor = props.bgColor ?? styles.primaryColor
+        const barColor = gradBg(props, styles.primaryColor)
         return (
           <div style={{
             width: '100%', height: '100%', display: 'flex', flexDirection: 'column',
@@ -246,7 +295,7 @@ export const ElementRenderer = memo(function ElementRenderer({ element }: Props)
       // ── Checkbox ────────────────────────────────────────────────────────────
       case 'checkbox': {
         const checked = props.checked ?? false
-        const color = props.bgColor ?? styles.primaryColor
+        const color = gradBg(props, styles.primaryColor)
         return (
           <div style={{
             width: '100%', height: '100%', display: 'flex', alignItems: 'center',
@@ -280,7 +329,7 @@ export const ElementRenderer = memo(function ElementRenderer({ element }: Props)
             ) : (
               <div style={{
                 width: '100%', height: '100%', borderRadius: '50%',
-                background: props.bgColor ?? styles.primaryColor,
+                background: gradBg(props, styles.primaryColor),
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 color: '#fff', fontFamily: 'Inter, sans-serif',
                 fontWeight: 700, fontSize: props.fontSize ?? 20,
@@ -319,7 +368,7 @@ export const ElementRenderer = memo(function ElementRenderer({ element }: Props)
       case 'divider':
         return (
           <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center' }}>
-            <div style={{ width: '100%', height: 2, background: props.bgColor ?? '#e5e7eb', borderRadius: 1 }} />
+            <div style={{ width: '100%', height: 2, background: gradBg(props, '#e5e7eb'), borderRadius: 1 }} />
           </div>
         )
 
@@ -363,49 +412,65 @@ export const ElementRenderer = memo(function ElementRenderer({ element }: Props)
       case 'tabbar': {
         const tabs = (props.tabs ?? 'Home,Explore,Profile').split(',').map((t) => t.trim())
         const active = props.activeTab ?? 0
-        const activeColor = props.bgColor ?? styles.primaryColor
-        const ICONS = ['⌂', '◉', '♡', '☆', '≡', '◻']
+        const activeColor = gradBg(props, styles.primaryColor)
+        const TAB_ICONS = ['home', 'search', 'heart', 'star', 'bell', 'user', 'settings', 'bookmark']
         return (
           <div style={{
-            width: '100%', height: '100%', background: '#fff',
+            width: '100%', height: '100%',
+            background: props.bgColor ?? '#ffffff',
             borderTop: '1px solid #e5e7eb', display: 'flex', alignItems: 'center',
           }}>
-            {tabs.map((tab, i) => (
-              <div key={i} style={{
-                flex: 1, display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center', gap: 3,
-                fontFamily: 'Inter, sans-serif', fontSize: 10,
-                color: i === active ? activeColor : '#9ca3af',
-              }}>
-                <span style={{ fontSize: 18 }}>{ICONS[i % ICONS.length]}</span>
-                <span>{tab}</span>
-              </div>
-            ))}
+            {tabs.map((tab, i) => {
+              const isActive = i === active
+              const iconPath = ICON_PATHS[TAB_ICONS[i % TAB_ICONS.length]] ?? ICON_PATHS.home
+              const color = isActive ? activeColor : '#9ca3af'
+              return (
+                <div key={i} style={{
+                  flex: 1, display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'center', gap: 4,
+                  fontFamily: 'Inter, sans-serif', fontSize: 10, fontWeight: isActive ? 600 : 400,
+                  color,
+                }}>
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none"
+                    stroke={typeof color === 'string' ? color : styles.primaryColor}
+                    strokeWidth={isActive ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round">
+                    <path d={iconPath} />
+                  </svg>
+                  <span>{tab}</span>
+                  {isActive && (
+                    <div style={{ width: 4, height: 4, borderRadius: '50%', background: color, marginTop: -2 }} />
+                  )}
+                </div>
+              )
+            })}
           </div>
         )
       }
 
       // ── Search Bar ──────────────────────────────────────────────────────────
-      case 'searchbar':
+      case 'searchbar': {
+        const sbColor = props.textColor ?? '#9ca3af'
         return (
           <div style={{
             width: '100%', height: '100%',
-            background: '#f3f4f6', border: '1.5px solid #e5e7eb',
+            background: props.bgColor ?? '#f3f4f6',
+            border: `1.5px solid ${props.bgColor ? 'transparent' : '#e5e7eb'}`,
             borderRadius: props.borderRadius ?? globalRadius,
             display: 'flex', alignItems: 'center', padding: '0 14px', gap: 10,
-            fontFamily: 'Inter, sans-serif', fontSize: props.fontSize ?? 14, color: '#9ca3af',
+            fontFamily: props.fontFamily ?? 'Inter, sans-serif', fontSize: props.fontSize ?? 14, color: sbColor,
           }}>
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#9ca3af" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke={sbColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
               <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
             <span>{props.placeholder ?? 'Search…'}</span>
           </div>
         )
+      }
 
       // ── Icon ─────────────────────────────────────────────────────────────────
       case 'icon': {
         const iconPath = ICON_PATHS[props.iconName ?? 'star'] ?? ICON_PATHS.star
-        const iconColor = props.bgColor ?? styles.primaryColor
+        const iconColor = gradBg(props, styles.primaryColor)
         return (
           <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg
@@ -447,89 +512,119 @@ export const ElementRenderer = memo(function ElementRenderer({ element }: Props)
       }
 
       // ── Video ─────────────────────────────────────────────────────────────────
-      case 'video':
+      case 'video': {
+        const url = props.videoUrl ?? ''
+        const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&?/\s]+)/)
+        const vmMatch = url.match(/vimeo\.com\/(\d+)/)
+        const isDirect = !ytMatch && !vmMatch && /\.(mp4|webm|ogg|mov)(\?|$)/i.test(url)
+
+        if (ytMatch) {
+          return (
+            <div style={{ width: '100%', height: '100%', borderRadius: props.borderRadius ?? globalRadius, overflow: 'hidden' }}>
+              <iframe
+                src={`https://www.youtube.com/embed/${ytMatch[1]}?rel=0&modestbranding=1`}
+                style={{ width: '100%', height: '100%', border: 'none' }}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            </div>
+          )
+        }
+        if (vmMatch) {
+          return (
+            <div style={{ width: '100%', height: '100%', borderRadius: props.borderRadius ?? globalRadius, overflow: 'hidden' }}>
+              <iframe
+                src={`https://player.vimeo.com/video/${vmMatch[1]}`}
+                style={{ width: '100%', height: '100%', border: 'none' }}
+                allow="autoplay; fullscreen; picture-in-picture"
+                allowFullScreen
+              />
+            </div>
+          )
+        }
+        if (isDirect) {
+          return (
+            <div style={{ width: '100%', height: '100%', borderRadius: props.borderRadius ?? globalRadius, overflow: 'hidden', background: '#000' }}>
+              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+              <video src={url} controls style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+            </div>
+          )
+        }
+        // No URL yet — show a clean placeholder with a prompt to add one
         return (
           <div style={{
-            width: '100%', height: '100%',
-            background: '#111827',
+            width: '100%', height: '100%', background: '#111827',
             borderRadius: props.borderRadius ?? globalRadius,
             overflow: 'hidden', position: 'relative',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10,
           }}>
-            {/* Subtle film grain */}
-            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, rgba(255,255,255,0.03) 0%, transparent 100%)' }} />
-            {/* Play button */}
             <div style={{
               width: 52, height: 52, borderRadius: '50%',
-              background: 'rgba(255,255,255,0.18)',
+              background: 'rgba(255,255,255,0.15)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              backdropFilter: 'blur(4px)',
             }}>
               <svg viewBox="0 0 24 24" width="22" height="22" fill="#fff">
                 <polygon points="5,3 19,12 5,21" />
               </svg>
             </div>
-            {/* Title */}
-            {props.label && (
-              <div style={{
-                position: 'absolute', bottom: 10, left: 12,
-                color: '#fff', fontSize: 13, fontFamily: 'Inter, sans-serif',
-                fontWeight: 500, textShadow: '0 1px 4px rgba(0,0,0,0.5)',
-              }}>
-                {props.label}
-              </div>
-            )}
-            {/* Duration badge */}
-            <div style={{
-              position: 'absolute', bottom: 10, right: 10,
-              background: 'rgba(0,0,0,0.55)', color: '#fff',
-              fontSize: 10, fontFamily: 'Inter, sans-serif',
-              padding: '2px 6px', borderRadius: 4,
-            }}>0:00</div>
+            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, fontFamily: 'Inter, sans-serif', textAlign: 'center' }}>
+              {props.label || 'Paste a YouTube, Vimeo,'}
+              {!props.label && <><br />or .mp4 URL in properties</>}
+            </div>
           </div>
         )
+      }
 
       // ── Map ───────────────────────────────────────────────────────────────────
       case 'map': {
-        const pinColor = props.bgColor ?? styles.primaryColor
+        const location = props.mapLocation ?? ''
+        const zoom = props.mapZoom ?? 13
+        const radius = props.borderRadius ?? globalRadius
+
+        if (location) {
+          const encodedLoc = encodeURIComponent(location)
+          const mapSrc = `https://maps.google.com/maps?q=${encodedLoc}&t=&z=${zoom}&ie=UTF8&iwloc=&output=embed`
+          return (
+            <div style={{ width: '100%', height: '100%', borderRadius: radius, overflow: 'hidden', position: 'relative' }}>
+              <iframe
+                src={mapSrc}
+                style={{ width: '100%', height: '100%', border: 'none' }}
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+              />
+            </div>
+          )
+        }
+
+        // No location yet — decorative placeholder
+        const pinColor = gradBg(props, styles.primaryColor)
         return (
           <div style={{
-            width: '100%', height: '100%',
-            borderRadius: props.borderRadius ?? globalRadius, overflow: 'hidden',
-            position: 'relative',
-            background: 'linear-gradient(145deg, #e8f0e8 0%, #d4e4d4 100%)',
+            width: '100%', height: '100%', borderRadius: radius, overflow: 'hidden',
+            position: 'relative', background: 'linear-gradient(145deg, #e8f0e8 0%, #d4e4d4 100%)',
           }}>
-            {/* Grid lines */}
             <div style={{
               position: 'absolute', inset: 0,
               backgroundImage: 'linear-gradient(rgba(100,120,100,0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(100,120,100,0.12) 1px, transparent 1px)',
               backgroundSize: '32px 32px',
             }} />
-            {/* Roads */}
             <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} viewBox="0 0 280 200" preserveAspectRatio="none">
               <line x1="0" y1="100" x2="280" y2="100" stroke="#fff" strokeWidth="7" opacity="0.6" />
               <line x1="140" y1="0" x2="140" y2="200" stroke="#fff" strokeWidth="7" opacity="0.6" />
               <line x1="0" y1="60" x2="280" y2="60" stroke="#fff" strokeWidth="3.5" opacity="0.45" />
               <line x1="80" y1="0" x2="80" y2="200" stroke="#fff" strokeWidth="3.5" opacity="0.45" />
               <rect x="90" y="65" width="85" height="50" fill="rgba(180,200,180,0.5)" rx="2" />
-              <rect x="152" y="38" width="42" height="37" fill="rgba(180,200,180,0.5)" rx="2" />
             </svg>
-            {/* Location pin */}
             <div style={{ position: 'absolute', top: '38%', left: '50%', transform: 'translate(-50%,-100%)' }}>
-              <div style={{
-                width: 22, height: 22, borderRadius: '50% 50% 50% 0',
-                background: pinColor, transform: 'rotate(-45deg)',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
-              }} />
+              <div style={{ width: 22, height: 22, borderRadius: '50% 50% 50% 0', background: pinColor, transform: 'rotate(-45deg)', boxShadow: '0 2px 8px rgba(0,0,0,0.25)' }} />
             </div>
-            {/* Label badge */}
             <div style={{
-              position: 'absolute', bottom: 8, right: 10,
+              position: 'absolute', bottom: 8, left: '50%', transform: 'translateX(-50%)',
               fontSize: 10, color: '#374151', fontFamily: 'Inter, sans-serif',
-              background: 'rgba(255,255,255,0.88)', padding: '2px 8px', borderRadius: 4,
-              boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
+              background: 'rgba(255,255,255,0.9)', padding: '3px 10px', borderRadius: 10,
+              whiteSpace: 'nowrap',
             }}>
-              {props.label ?? 'Map'}
+              Enter a location in properties
             </div>
           </div>
         )
@@ -542,7 +637,7 @@ export const ElementRenderer = memo(function ElementRenderer({ element }: Props)
         const rawLabels = (props.chartLabels ?? '').split(',')
         const labels = rawLabels.length >= data.length ? rawLabels : data.map((_, i) => String(i + 1))
         const chartType = props.chartType ?? 'bar'
-        const color = props.bgColor ?? styles.primaryColor
+        const color = gradBg(props, styles.primaryColor)
         const max = Math.max(...data, 1)
         const W = 260, H = 130, padX = 18, padY = 12
         const chartH = H - padY * 2
@@ -649,7 +744,7 @@ export const ElementRenderer = memo(function ElementRenderer({ element }: Props)
         const val = props.value ?? 1
         const minV = props.min ?? 0
         const maxV = props.max ?? 99
-        const color = props.bgColor ?? styles.primaryColor
+        const color = gradBg(props, styles.primaryColor)
         const atMin = val <= minV, atMax = val >= maxV
         return (
           <div style={{
@@ -686,6 +781,79 @@ export const ElementRenderer = memo(function ElementRenderer({ element }: Props)
                 )
               })}
             </div>
+          </div>
+        )
+      }
+
+      // ── Draw ──────────────────────────────────────────────────────────────────
+      case 'draw': {
+        const d = props.pathData ?? ''
+        const blendMode = (props.blendMode ?? 'normal') as React.CSSProperties['mixBlendMode']
+        const glowR = props.glowRadius ?? 0
+        const filterId = `glow-${element.id}`
+        const gradientId = `grad-${element.id}`
+        const strokeColor = props.strokeColor ?? '#6366f1'
+        const strokeWidth = props.strokeWidth ?? 3
+        const linecap = (props.strokeLinecap ?? 'round') as 'round' | 'square' | 'butt'
+        const gradFill = props.fillGradient as { color2: string; angle: number } | undefined
+        const fillValue = gradFill ? `url(#${gradientId})` : (props.fillColor ?? 'none')
+        const hasDefs = glowR > 0 || !!gradFill
+        return (
+          <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+            <svg
+              width="100%" height="100%"
+              style={{ overflow: 'visible', position: 'absolute', inset: 0, mixBlendMode: blendMode }}
+              fill="none"
+            >
+              {hasDefs && (
+                <defs>
+                  {glowR > 0 && (
+                    <filter id={filterId} x="-80%" y="-80%" width="260%" height="260%">
+                      <feGaussianBlur stdDeviation={glowR} result="blur" />
+                      <feMerge>
+                        <feMergeNode in="blur" />
+                        <feMergeNode in="blur" />
+                        <feMergeNode in="SourceGraphic" />
+                      </feMerge>
+                    </filter>
+                  )}
+                  {gradFill && (
+                    <linearGradient id={gradientId} x1="0%" y1="50%" x2="100%" y2="50%"
+                      gradientTransform={`rotate(${gradFill.angle}, 0.5, 0.5)`}>
+                      <stop offset="0%" stopColor={props.fillColor ?? '#6366f1'} />
+                      <stop offset="100%" stopColor={gradFill.color2} />
+                    </linearGradient>
+                  )}
+                </defs>
+              )}
+              {d && (
+                <>
+                  {/* Outer glow halo — only for neon/glow effect */}
+                  {glowR > 0 && (
+                    <path
+                      d={d}
+                      stroke={strokeColor}
+                      strokeWidth={strokeWidth * 4}
+                      fill="none"
+                      strokeLinecap={linecap}
+                      strokeLinejoin="round"
+                      opacity={0.35}
+                      filter={`url(#${filterId})`}
+                    />
+                  )}
+                  {/* Main stroke */}
+                  <path
+                    d={d}
+                    stroke={strokeColor}
+                    strokeWidth={strokeWidth}
+                    fill={fillValue}
+                    strokeLinecap={linecap}
+                    strokeLinejoin="round"
+                    filter={glowR > 0 ? `url(#${filterId})` : undefined}
+                  />
+                </>
+              )}
+            </svg>
           </div>
         )
       }
